@@ -24,7 +24,7 @@ corrections.csv   retours d'experts            outputs/  rapports et cache LLM g
 ## Architecture (3 niveaux)
 1. **Règles déterministes** (`corroboria.py`) : appliquent le `Mapping.xlsx` champ par champ (accents, courriel, type de contrat, affectation, situation d'emploi via la table des motifs, heures, dates). Verdict `Source_verdict = règle`.
 2. **IA locale** (`ia.py`) : sur les écarts *ambigus* (courriel, libellé de rôle, heures sans valeur source), un RandomForest scikit-learn estime P(erreur). Si 0,35 < P < 0,65 → `A_REVUE_HUMAINE` (affiché « À relire »). Verdict `Source_verdict = IA`, avec les facteurs utilisés.
-3. **LLM local** (`llm.py`, Ollama, `qwen2.5:3b`) : rédige en français (2 phrases : constat + « À vérifier : ») la justification d'une erreur **à la demande**, via le bouton « Expliquer » de l'app (≈ 30-60 s sans GPU). Il ne change **jamais** un verdict. Réponses mises en cache (`outputs/llm_cache.json`) ; repli sur le gabarit si Ollama est absent. Tout reste sur la machine.
+3. **LLM local** (`llm.py`, Ollama, `qwen2.5:3b`) : rédige en français (2 phrases : constat + « À vérifier : ») la justification d'une erreur **à la demande**, quand on clique sur la **cloche** (images `assets/cloche_*.png`) à gauche d'une ligne du tableau (l'explication s'affiche dans un bandeau en bas de page ; ≈ 30-60 s sans GPU ; Ollama n'est interrogé qu'à ce moment-là). Il ne change **jamais** un verdict. Réponses mises en cache (`outputs/llm_cache.json`) ; repli sur le gabarit si Ollama est absent. Tout reste sur la machine.
 4. **Priorisation** : score 0-100 = gravité du champ (60 %) + confiance (25 %) + récurrence du champ (15 %), poids normalisés (`ia.priorite`, `ia.WEIGHTS`, `ia.SEVERITY`), et `Cause_probable` (ex. « B contient toujours 40 : valeur par défaut »).
 
 ## Application
@@ -43,7 +43,7 @@ Excel + CSV (séparateur `;`, UTF-8 avec BOM) : tout, vraies anomalies seules, j
 Onglets : Erreurs à investiguer (vraies anomalies), À relire, Écarts justifiés, Résumé par champ, Détail complet. Chaque ligne porte la règle appliquée, le verdict, l'origine (règle / IA / expert), la confiance et l'explication.
 
 ## Retour d'expert
-`corrections.csv` (Matricule, Champ, Verdict) : relu à chaque exécution, prime sur tout verdict et enrichit l'entraînement (poids x20). Modifiable aussi depuis l'app.
+`corrections.csv` (Matricule, Champ, Verdict) : relu à chaque exécution, prime sur tout verdict et enrichit l'entraînement (poids x20). Le statut d'une ligne se corrige directement dans le tableau (liste déroulante de la colonne Statut, texte coloré et crayon `assets/pencil-square-svgrepo-com.svg`, avec une boîte de confirmation) : la correction est ajoutée à ce fichier.
 
 ## Hypothèses et limites
 - Règle « date la plus ancienne entre DateEntréePoste et date d'effet de l'unité adm. » : donne une date antérieure pour 100 % de l'échantillon (dates du `détail_du_poste` incohérentes). Désactivée (`USE_DETAIL_MIN = False`), on compare à `DateEntréePoste`.

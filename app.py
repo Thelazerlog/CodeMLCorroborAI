@@ -1,5 +1,6 @@
 """Application CorroborIA : streamlit run app.py"""
 import base64
+import hashlib
 import io
 import unicodedata
 from pathlib import Path
@@ -78,7 +79,7 @@ TR = {
         "rule_line": "**Règle appliquée** : {x}", "expl_line": "**Explication** : {x}",
         "btn_llm": "Expliquer avec le LLM local ({m})", "btn_llm_h": "Appel au modèle sur ta machine (plusieurs secondes sans GPU) ; résultat mis en cache.",
         "llm_spin": "Le LLM local rédige l'explication…",
-        "llm_none": "Le LLM n'a pas répondu (Ollama arrêté ou trop lent). Explication par gabarit conservée.",
+        "llm_none": "Le LLM n'a pas répondu (Ollama arrêté, modèle absent ou trop lent). Pour installer le modèle : ollama pull {m}. Explication par gabarit conservée.",
         "llm_expl": "**Explication LLM local ({m})** : {x}", "cause": "**Cause probable** : {x}",
         "all_checks": "Toutes les vérifications de cet employé",
         "expert": "**Retour d'expert** : corriger ce verdict (appris aux prochaines exécutions)",
@@ -94,14 +95,20 @@ TR = {
         "sev_col": "Gravité (0-1)", "reset": "Rétablir les valeurs par défaut",
         "hist_title": "Confiance du modèle", "cause_title": "Cause probable", "emp_title": "Employé", "others": "Autres", "unspecified": "Non précisée",
         "conf_axis": "Confiance", "gpu_found": "GPU NVIDIA détecté : {g}", "gpu_none": "Aucun GPU NVIDIA détecté : calcul sur CPU.",
-        "device": "Calcul", "dev_auto": "Automatique (GPU si disponible)", "dev_cpu": "CPU seulement", "on_proc": "Modèle chargé sur : {p}",
+        "device": "Calcul", "dev_auto": "Automatique (GPU si disponible)", "dev_cpu": "CPU seulement", "on_proc": "Calculé sur : {p}",
         "click_hint": "Clique sur une part de l'anneau ou d'un camembert, ou choisis une pastille, pour afficher les lignes correspondantes.", "rows_of": "{n} lignes : {l}",
         "selected": "Données sélectionnées", "fun": ["À vous de jouer", "Bon début", "On avance bien", "Plus qu'un petit effort", "Presque fini", "Mission accomplie"],
         "fun_lbl": "Revue humaine", "rev_title": "Relecture", "rev_opt": "Relire les vraies anomalies sous le seuil de confiance",
         "rev_help": "Non : une vraie anomalie n'est jamais à relire (elle ne compte pas dans « À faire »). Oui : sous le seuil de confiance, elle passe en « À relire » et compte dans « À faire ».",
         "yes": "Oui", "no": "Non", "pick_pills": "Afficher", "and_cause": "cause", "and_emp": "employé",
         "sort_lbl": "Trier", "sort_desc": "Priorité décroissante", "sort_asc": "Priorité croissante",
-        "dl_cur": "Télécharger le tableau actuellement affiché - CSV", "v_all": "Tout", "v_field": "Par champ", "v_gloss": "Glossaire", "v_set": "Paramètres",
+        "dl_cur": "Télécharger le tableau actuellement affiché - CSV", "v_todo": "À vérifier", "v_all": "Tout", "v_field": "Par champ", "v_gloss": "Glossaire", "v_set": "Paramètres",
+        "aide_ia": "Aide IA", "aide_help": "Appeler l'IA à l'aide : explication de la ligne par le LLM local (clic sur le symbole).",
+        "statut_help": "Le statut peut être modifié depuis la liste déroulante (une confirmation est demandée). Cela remplace la revue de l'expert.",
+        "conf_title": "Confirmer le changement de statut", "conf_ok": "Confirmer", "conf_no": "Annuler",
+        "conf_txt": "Changer le statut de **{m}** · `{c}` de « {a} » à « {b} » ? La correction est enregistrée dans corrections.csv et apprise aux prochaines exécutions.",
+        "conf_bad": "Seuls « Vraie anomalie » et « Écart justifié » peuvent être choisis.", "ban_title": "Explication IA locale",
+        "ban_close": "Fermer", "ban_fallback": "Explication du moteur (le LLM local n'a pas répondu) :",
         "todo_title": "À faire", "scope": "Données à investiguer", "todo_n": "Lignes à investiguer", "todo_left": "Restantes",
         "seuil": "Seuil de confiance minimal", "seuil_help": "En dessous de ce seuil, une validation humaine est nécessaire.",
         "todo_cap": "À investiguer : toutes les erreurs et cas à revoir, plus les écarts justifiés par l'IA dont la confiance est sous le seuil.",
@@ -145,7 +152,7 @@ TR = {
         "rule_line": "**Rule applied**: {x}", "expl_line": "**Explanation**: {x}",
         "btn_llm": "Explain with the local LLM ({m})", "btn_llm_h": "Calls the model on your machine (several seconds without GPU); result is cached.",
         "llm_spin": "The local LLM is writing the explanation…",
-        "llm_none": "The LLM did not answer (Ollama stopped or too slow). Template explanation kept.",
+        "llm_none": "The LLM did not answer (Ollama stopped, model missing or too slow). To install the model: ollama pull {m}. Template explanation kept.",
         "llm_expl": "**Local LLM explanation ({m})**: {x}", "cause": "**Probable cause**: {x}",
         "all_checks": "All checks for this employee",
         "expert": "**Expert feedback**: correct this verdict (learned on next runs)",
@@ -161,14 +168,20 @@ TR = {
         "sev_col": "Severity (0-1)", "reset": "Restore default values",
         "hist_title": "Model confidence", "cause_title": "Probable cause", "emp_title": "Employee", "others": "Others", "unspecified": "Unspecified",
         "conf_axis": "Confidence", "gpu_found": "NVIDIA GPU detected: {g}", "gpu_none": "No NVIDIA GPU detected: running on CPU.",
-        "device": "Compute", "dev_auto": "Automatic (GPU if available)", "dev_cpu": "CPU only", "on_proc": "Model loaded on: {p}",
+        "device": "Compute", "dev_auto": "Automatic (GPU if available)", "dev_cpu": "CPU only", "on_proc": "Computed on: {p}",
         "click_hint": "Click a slice of the ring or of a pie, or pick a pill, to display the matching rows.", "rows_of": "{n} rows: {l}",
         "selected": "Selected data", "fun": ["Your move", "Good start", "Making progress", "Just a little more", "Almost done", "Mission accomplished"],
         "fun_lbl": "Human review", "rev_title": "Review", "rev_opt": "Re-read true anomalies below the confidence threshold",
         "rev_help": "No: a true anomaly is never re-read (it does not count in \"To do\"). Yes: below the confidence threshold, it becomes \"To review\" and counts in \"To do\".",
         "yes": "Yes", "no": "No", "pick_pills": "Show", "and_cause": "cause", "and_emp": "employee",
         "sort_lbl": "Sort", "sort_desc": "Highest priority first", "sort_asc": "Lowest priority first",
-        "dl_cur": "Download the table currently displayed - CSV", "v_all": "All", "v_field": "By field", "v_gloss": "Glossary", "v_set": "Settings",
+        "dl_cur": "Download the table currently displayed - CSV", "v_todo": "To check", "v_all": "All", "v_field": "By field", "v_gloss": "Glossary", "v_set": "Settings",
+        "aide_ia": "AI help", "aide_help": "Call the AI for help: the local LLM explains the row (click the symbol).",
+        "statut_help": "The status can be changed from the drop-down list (a confirmation is requested). This replaces the expert review.",
+        "conf_title": "Confirm the status change", "conf_ok": "Confirm", "conf_no": "Cancel",
+        "conf_txt": "Change the status of **{m}** · `{c}` from \"{a}\" to \"{b}\"? The correction is saved in corrections.csv and learned on the next runs.",
+        "conf_bad": "Only \"True anomaly\" and \"Justified gap\" can be chosen.", "ban_title": "Local AI explanation",
+        "ban_close": "Close", "ban_fallback": "Engine explanation (the local LLM did not answer):",
         "todo_title": "To do", "scope": "Data to investigate", "todo_n": "Rows to investigate", "todo_left": "Remaining",
         "seuil": "Minimum confidence threshold", "seuil_help": "Below this threshold, human validation is required.",
         "todo_cap": "To investigate: all errors and review cases, plus AI-justified gaps whose confidence is below the threshold.",
@@ -221,9 +234,9 @@ def dot(statut):
     return f":{NAMED[statut]}[●]"
 
 
-def styled(d, highlight=None):
+def styled(d, highlight=None, fmt_statut=True):
     """DataFrame avec la colonne Statut affichée « ● Libellé » dans la couleur du verdict."""
-    fmt = {"Statut": lambda v: f"● {LABEL.get(v, v)}"}
+    fmt = {"Statut": lambda v: f"● {LABEL.get(v, v)}"} if fmt_statut else {}
     if "Confiance" in d.columns:
         fmt["Confiance"] = "{:.0%}"
     if "Source_verdict" in d.columns:
@@ -235,10 +248,23 @@ def styled(d, highlight=None):
     return s
 
 
+@st.cache_resource
+def icone(nom, taille=36, rogner=True):
+    """Icône de assets/ (rognée si demandé) réduite, en data-URI (affichée dans le tableau et le bandeau)."""
+    f = ASSETS / nom
+    if not f.exists():
+        return None
+    im = (trimmed(f) if rogner else Image.open(f)).convert("RGBA")
+    im.thumbnail((taille, taille))
+    buf = io.BytesIO()
+    im.save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
 def prio_col():
     """Colonne Priorité en barre 0-100, identique dans tous les tableaux."""
     return st.column_config.ProgressColumn(TR[lang]["cols"].get("Priorité", "Priorité"), min_value=0, max_value=100,
-                                           format="%d / 100",
+                                           format="%d / 100", width=96,
                                            help=t("prio_help", g=wn["gravite"], c=wn["confiance"], r=wn["recurrence"]))
 
 
@@ -271,22 +297,14 @@ with st.sidebar:
         st.session_state.ver += 1
         st.session_state.run = True
     st.subheader(t("llm"))
-    present = llm.installed_models()
-    labels = {m: f"{name} ({m})" + ("" if m in present else t("not_installed")) for name, m, _ in llm.PROFILES}
+    # Ollama n'est interrogé que lorsqu'on clique sur « Expliquer » (aucun appel réseau à chaque rechargement)
+    labels = {m: f"{name} ({m})" for name, m, _ in llm.PROFILES}
     model = st.radio(t("llm_model"), [m for _, m, _ in llm.PROFILES], format_func=labels.get, help=t("llm_help"))  # boutons : pas de saisie libre
-    llm_ok = model in present
     gpus = gpu_list()
     st.caption(t("gpu_found", g=" ; ".join(gpus)) if gpus else t("gpu_none"))
     device = st.radio(t("device"), ["auto", "cpu"], horizontal=True, key="device", disabled=not gpus,
                       format_func=lambda d: t("dev_auto") if d == "auto" else t("dev_cpu"))
-    proc = llm.processor(model)
-    if proc:
-        st.caption(t("on_proc", p=proc))
     st.caption(dict((m, n) for _, m, n in llm.PROFILES)[model])
-    if not present:
-        st.caption(t("ollama_off"))
-    elif not llm_ok:
-        st.caption(t("ollama_pull", m=model))
     st.divider()
     st.caption(t("side_note"))
 
@@ -373,8 +391,13 @@ a_faire = a_faire.sort_values(["Priorité", "Confiance"], ascending=[False, True
 
 
 def auto_ok(r):
-    """Écart justifié dont la confiance atteint le seuil : pré-vérifié automatiquement."""
-    return r.Statut == "ECART_JUSTIFIE" and float(r.Confiance) >= seuil
+    """Pré-vérifié automatiquement : écart justifié dont la confiance atteint le seuil, et vraie anomalie tant que
+    l'option Paramètres « relire les vraies anomalies » est sur Non (ou si sa confiance atteint le seuil)."""
+    if r.Statut == "ECART_JUSTIFIE":
+        return float(r.Confiance) >= seuil
+    if r.Statut == "ERREUR":
+        return (not relire_anom) or float(r.Confiance) >= seuil
+    return False
 
 
 def is_ok(r):
@@ -384,26 +407,152 @@ def is_ok(r):
 fait = pd.Series([is_ok(r) for r in a_faire.itertuples()], index=a_faire.index, dtype=bool)
 
 
-def editor(d, key, highlight=None, **cfg):
-    """Tableau avec la colonne « Vérifié » en premier, cochable ; cellule grise = pré-cochée automatiquement."""
-    rows = df.loc[d.index]
-    auto = {i: auto_ok(r) and vkey(r) not in vstate for i, r in zip(rows.index, rows.itertuples())}
-    shown = d.copy()
-    shown.insert(0, "Vérifié", [is_ok(r) for r in rows.itertuples()])
-    conf = {c: st.column_config.Column(n) for c, n in TR[lang]["cols"].items() if c in shown.columns}
-    conf["Vérifié"] = st.column_config.CheckboxColumn(TR[lang]["cols"].get("Vérifié", "Vérifié"), help=t("ver_help"), width="small")
-    conf.update(cfg)
-    sty = styled(shown, highlight).apply(
-        lambda c: ["background-color: rgba(128, 128, 128, .40)" if auto.get(i) else "" for i in c.index], subset=["Vérifié"])
-    edited = st.data_editor(sty, hide_index=True, width="stretch", column_config=conf,
-                            disabled=[c for c in shown.columns if c != "Vérifié"],
-                            key=f"{key}_{st.session_state.get('edit_v', 0)}")
-    changed = edited.index[edited["Vérifié"].values != shown["Vérifié"].values]
-    if len(changed):
-        for i in changed:
-            vstate[vkey(df.loc[i])] = bool(edited.at[i, "Vérifié"])
-        st.session_state.edit_v = st.session_state.get("edit_v", 0) + 1
+def maj_statut(i, nouveau):
+    """Applique une correction de statut confirmée : corrections.csv (relu par le moteur) puis recalcul."""
+    r = df.loc[i]
+    with open(ia.BASE / "corrections.csv", "a", encoding="utf-8") as f:
+        f.write(f"{r.Matricule},{r.Champ},{nouveau}\n")
+    vstate[vkey(r)] = True
+    st.session_state.ver += 1
+
+
+def annuler_statut():
+    st.session_state.pop("statut_pending", None)
+
+
+@st.dialog(t("conf_title"), on_dismiss=annuler_statut)
+def confirmer_statut(i, nouveau):
+    r = df.loc[i]
+    st.markdown(t("conf_txt", m=r.Matricule, c=r.Champ, a=LABEL[r.Statut], b=LABEL.get(nouveau, nouveau)))
+    valide = nouveau in ("ERREUR", "ECART_JUSTIFIE")
+    if not valide:
+        st.warning(t("conf_bad"))
+    c1, c2 = st.columns(2)
+    if c1.button(t("conf_ok"), type="primary", disabled=not valide, width="stretch"):
+        maj_statut(i, nouveau)
+        annuler_statut()
         st.rerun()
+    if c2.button(t("conf_no"), width="stretch"):
+        annuler_statut()
+        st.rerun()
+
+
+# ---------- tableau « Données sélectionnées » : composant HTML (cloche en image à gauche, statut coloré + crayon)
+TABLEAU_CSS = """
+.corro{font-size:13px;color:var(--st-text-color,inherit);font-family:var(--st-font,inherit)}
+.wrap{max-height:440px;overflow:auto;border:1px solid rgba(128,128,128,.3);border-radius:8px}
+table{border-collapse:collapse;width:100%}
+th{position:sticky;top:0;z-index:2;background:var(--st-secondary-background-color,#262730);text-align:left;font-weight:600;
+   padding:8px;border-bottom:1px solid rgba(128,128,128,.35);white-space:nowrap}
+td{padding:5px 8px;border-bottom:1px solid rgba(128,128,128,.18);white-space:nowrap;vertical-align:middle}
+tr.actif td{background:rgba(255,193,7,.22)}
+td.auto input{accent-color:#9a9a9a;opacity:.75}
+td.bell,th.bell{width:40px;padding:2px 6px;text-align:center}
+button.bell{background:none;border:0;cursor:pointer;padding:2px;border-radius:6px;line-height:0}
+button.bell:hover{background:rgba(142,107,191,.22)}
+button.bell img{width:34px;height:34px;object-fit:contain;display:block}
+input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:#8e6bbf}
+td.ver,th.ver{text-align:center;width:60px}
+.bar{display:inline-block;vertical-align:middle;width:56px;height:8px;border-radius:5px;background:rgba(128,128,128,.3);margin-right:6px}
+.bar span{display:block;height:100%;border-radius:5px;background:#d64545}
+td.statut{position:relative;font-weight:700;min-width:150px}
+td.statut .cell{display:flex;align-items:center;justify-content:space-between;gap:10px}
+td.statut img{width:15px;height:15px;opacity:.85}
+td.statut select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+td.statut:hover{background:rgba(128,128,128,.18)}
+"""
+TABLEAU_JS = """
+export default function(component) {
+  const { data, setTriggerValue, parentElement } = component;
+  const old = parentElement.querySelector('.corro'); if (old) old.remove();
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const T = data.t, I = data.icons;
+  const th = (txt, cls, tip) => `<th class="${cls || ''}" ${tip ? `title="${esc(tip)}"` : ''}>${esc(txt)}</th>`;
+  const head = '<tr>' + th('', 'bell', T.aide_help) + th(T.verifie, 'ver', T.ver_help) + th(T.prio) + th(T.matricule) + th(T.champ)
+    + th(T.va) + th(T.vb) + th(T.statut, '', T.statut_help) + th(T.source) + th(T.conf) + '</tr>';
+  const body = data.rows.map(r => {
+    const opts = r.options.map(o => `<option value="${esc(o[0])}" ${o[0] === r.statut ? 'selected' : ''}>${esc(o[1])}</option>`).join('');
+    return `<tr class="${r.actif ? 'actif' : ''}">`
+      + `<td class="bell"><button class="bell" data-id="${r.id}" title="${esc(T.aide_help)}"><img src="${r.actif ? I.violette : I.grise}" alt=""/></button></td>`
+      + `<td class="ver ${r.auto ? 'auto' : ''}"><input type="checkbox" data-id="${r.id}" ${r.verifie ? 'checked' : ''}/></td>`
+      + `<td><span class="bar"><span style="width:${r.prio}%"></span></span>${r.prio} / 100</td>`
+      + `<td>${esc(r.matricule)}</td><td>${esc(r.champ)}</td><td>${esc(r.va)}</td><td>${esc(r.vb)}</td>`
+      + `<td class="statut" style="color:${r.couleur}" title="${esc(T.statut_help)}"><div class="cell"><span>${esc(r.label)}</span>`
+      + `<img src="${I.crayon}" alt=""/></div><select data-id="${r.id}" data-orig="${esc(r.statut)}">${opts}</select></td>`
+      + `<td>${esc(r.source)}</td><td>${esc(r.conf)}</td></tr>`;
+  }).join('');
+  const box = document.createElement('div'); box.className = 'corro';
+  box.innerHTML = `<div class="wrap"><table><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+  parentElement.appendChild(box);
+  const wrap = box.querySelector('.wrap');
+  wrap.scrollTop = window.__corroScroll || 0;                       // garde la position après une mise à jour
+  wrap.addEventListener('scroll', () => { window.__corroScroll = wrap.scrollTop; });
+  box.querySelectorAll('button.bell').forEach(b => b.onclick = () => setTriggerValue('cloche', Number(b.dataset.id)));
+  box.querySelectorAll('input[type=checkbox]').forEach(c => c.onchange = () =>
+    setTriggerValue('verifie', {id: Number(c.dataset.id), valeur: c.checked}));
+  box.querySelectorAll('select').forEach(s => s.onchange = () => {
+    setTriggerValue('statut', {id: Number(s.dataset.id), valeur: s.value});
+    s.value = s.dataset.orig;                                       // l'affichage ne change qu'après confirmation
+  });
+}
+"""
+
+
+@st.cache_resource
+def composant_tableau(version):
+    """Une version par contenu CSS/JS : une modification du code est prise en compte sans redémarrer le serveur."""
+    return st.components.v2.component(f"corroboria_tableau_{version}", css=TABLEAU_CSS, js=TABLEAU_JS)
+
+
+def cb_cloche():
+    ev = st.session_state.get("tab_sel") or {}
+    if ev.get("cloche") is not None:
+        st.session_state.aide_row = int(ev["cloche"])
+        st.session_state.aide_pending = True
+
+
+def cb_verifie():
+    ev = (st.session_state.get("tab_sel") or {}).get("verifie")
+    if ev:
+        vstate[vkey(df.loc[int(ev["id"])])] = bool(ev["valeur"])
+
+
+def cb_statut():
+    ev = (st.session_state.get("tab_sel") or {}).get("statut")
+    if ev:
+        st.session_state.statut_pending = {"id": int(ev["id"]), "valeur": ev["valeur"]}
+
+
+def icone_svg(nom):
+    f = ASSETS / nom
+    return "data:image/svg+xml;base64," + base64.b64encode(f.read_bytes()).decode() if f.exists() else ""
+
+
+def tableau_lignes(d, actif):
+    """Affiche les lignes de d (DataFrame trié) dans le composant ; les actions arrivent par les rappels cb_*."""
+    cols = TR[lang]["cols"]
+    lignes = []
+    for i, r in zip(d.index, d.itertuples()):
+        valides = [("ERREUR", LABEL["ERREUR"]), ("ECART_JUSTIFIE", LABEL["ECART_JUSTIFIE"])]
+        if r.Statut not in ("ERREUR", "ECART_JUSTIFIE"):
+            valides = [(r.Statut, LABEL[r.Statut])] + valides
+        lignes.append({"id": int(i), "actif": int(i) == actif, "verifie": bool(is_ok(r)),
+                       "auto": bool(auto_ok(r) and vkey(r) not in vstate), "prio": int(r.Priorité),
+                       "matricule": str(r.Matricule), "champ": r.Champ, "va": str(r.ValeurSourceA), "vb": str(r.ValeurDestB),
+                       "statut": r.Statut, "label": LABEL[r.Statut], "couleur": HEX[r.Statut], "options": valides,
+                       "source": TR[lang]["src"].get(r.Source_verdict, r.Source_verdict), "conf": f"{float(r.Confiance):.0%}"})
+    data = {"rows": lignes,
+            "icons": {"grise": icone("cloche_grise.png", 68, rogner=False), "violette": icone("cloche_violette_son.png", 68, rogner=False),
+                      "crayon": icone_svg("pencil-square-svgrepo-com.svg")},
+            "t": {"aide_help": t("aide_help"), "statut_help": t("statut_help"), "ver_help": t("ver_help"),
+                  "verifie": cols.get("Vérifié", "Vérifié"), "prio": cols.get("Priorité", "Priorité"),
+                  "matricule": cols.get("Matricule", "Matricule"), "champ": cols.get("Champ", "Champ"),
+                  "va": cols.get("ValeurSourceA", "ValeurSourceA"), "vb": cols.get("ValeurDestB", "ValeurDestB"),
+                  "statut": cols.get("Statut", "Statut"), "source": cols.get("Source_verdict", "Source_verdict"),
+                  "conf": cols.get("Confiance", "Confiance")}}
+    composant_tableau(hashlib.md5((TABLEAU_CSS + TABLEAU_JS).encode()).hexdigest()[:8])(data=data, key="tab_sel", on_cloche_change=cb_cloche, on_verifie_change=cb_verifie,
+                        on_statut_change=cb_statut)
+
 
 # ------------------------------------------------------------------ dashboard
 ORDER = ["OK", "ECART_JUSTIFIE", "ERREUR", "A_REVUE_HUMAINE"]
@@ -504,17 +653,22 @@ PALETTE = ["#1c5b8c", "#479ea0", "#8cc4b8", "#f2a65a", "#b56576", "#6a994e", "#9
 ROUGE, ORANGE = HEX["ERREUR"], "#f08c00"
 
 
+VIOLET = "#8e6bbf"
+
+
 def histogram():
-    """Scores de confiance (lignes tranchées par l'IA + vraies anomalies), empilés : rouge = vraie anomalie, orange = écart justifié."""
+    """Scores de confiance (lignes tranchées par l'IA + vraies anomalies + à relire), empilés par statut actuel :
+    rouge = vraie anomalie, orange = écart justifié, violet = à relire."""
     d = df[(df.Source_verdict == "IA") | df.Statut.isin(["ERREUR", "A_REVUE_HUMAINE"])]
-    d = d[d.StatutInit.isin(["ERREUR", "ECART_JUSTIFIE"])].assign(Verdict=lambda x: x.StatutInit.map(LABEL),
-                                                               Confiance=lambda x: x.Confiance.astype(float))
-    dom = [LABEL["ERREUR"], LABEL["ECART_JUSTIFIE"]]
+    d = d[d.Statut.isin(["ERREUR", "ECART_JUSTIFIE", "A_REVUE_HUMAINE"])].assign(
+        Verdict=lambda x: x.Statut.map(LABEL), Confiance=lambda x: x.Confiance.astype(float))
+    dom = [LABEL["ERREUR"], LABEL["ECART_JUSTIFIE"], LABEL["A_REVUE_HUMAINE"]]
     return (alt.Chart(d).mark_bar(stroke="white", strokeWidth=0.5)
-            .encode(x=alt.X("Confiance:Q", bin=alt.Bin(extent=[0.5, 1.05], step=0.025), title=t("conf_axis"),
-                            axis=alt.Axis(format=".0%", labelFontSize=10, titleFontSize=11)),
+            .encode(x=alt.X("Confiance:Q", bin=alt.Bin(extent=[0, 1.025], step=0.025), title=t("conf_axis"),
+                            scale=alt.Scale(domain=[0, 1.025], nice=False),
+                            axis=alt.Axis(format=".0%", values=[i / 10 for i in range(11)], labelFontSize=10, titleFontSize=11)),
                     y=alt.Y("count():Q", title=None, axis=alt.Axis(labelFontSize=10)),
-                    color=alt.Color("Verdict:N", scale=alt.Scale(domain=dom, range=[ROUGE, ORANGE]),
+                    color=alt.Color("Verdict:N", scale=alt.Scale(domain=dom, range=[ROUGE, ORANGE, VIOLET]),
                                     legend=alt.Legend(orient="top-left", title=None, symbolType="circle", labelFontSize=11,
                                                       fillColor="rgba(0,0,0,0)", padding=0)),
                     tooltip=["Verdict:N", alt.Tooltip("count():Q", title=t("count"))])
@@ -584,19 +738,29 @@ def csv_bytes(d):  # séparateur ; et BOM UTF-8 : s'ouvre correctement dans Exce
 
 section(t("selected"))
 VUES = ["V_ALL", "V_FIELD", "V_GLOSS", "V_SET"]
+CHOIX = SHOWN + VUES
 NOM_VUE = {"V_ALL": "v_all", "V_FIELD": "v_field", "V_GLOSS": "v_gloss", "V_SET": "v_set"}
 with st.container(border=True):
-    pastilles = st.pills(t("pick_pills"), SHOWN + VUES, selection_mode="multi", key="sel_stat",
+    # un clic sur l'anneau coche la pastille du statut (et décocher la part la décoche) ; ensuite les pastilles font foi
+    clic = {s for s in SHOWN if evt and LABEL[s] in [p.get(t("verdict")) for p in (evt.selection.get("part") or [])]}
+    avant = st.session_state.get("_anneau_prev", set())
+    if clic != avant:
+        courant = (set(st.session_state.get("sel_stat") or []) | (clic - avant)) - (avant - clic)
+        st.session_state["sel_stat"] = [v for v in CHOIX if v in courant]
+        st.session_state["_anneau_prev"] = clic
+    st.session_state.setdefault("sel_stat", ["A_REVUE_HUMAINE"])  # au départ : les lignes à relire
+    pastilles = st.pills(t("pick_pills"), CHOIX, selection_mode="multi", key="sel_stat",
                          format_func=lambda v: t(NOM_VUE[v]) if v in NOM_VUE else LABEL[v]) or []
-    ordre = st.segmented_control(t("sort_lbl"), ["desc", "asc"], default="desc", key="sel_sort",
-                                 format_func=lambda o: t("sort_" + o)) or "desc"
-    bouton = st.container()  # bouton d'export, rempli une fois le tableau affiché connu
+    col_dl, col_tri = st.columns([5, 4], vertical_alignment="bottom")
+    bouton = col_dl.container()  # bouton d'export (à gauche du tri), rempli une fois le tableau affiché connu
+    with col_tri:
+        ordre = st.segmented_control(t("sort_lbl"), ["desc", "asc"], default="desc", key="sel_sort",
+                                     format_func=lambda o: t("sort_" + o)) or "desc"
     export, export_nom = None, "tableau"
     if lang == "en":
         st.caption(t("free_text"))
 
-    choisies = [p.get(t("verdict")) for p in (evt.selection.get("part") or [])] if evt else []
-    statuts = [s for s in SHOWN if LABEL[s] in choisies or s in pastilles or "V_ALL" in pastilles]
+    statuts = [s for s in SHOWN if s in pastilles or "V_ALL" in pastilles]
     indices, parties = [], []
     if statuts:
         indices.append(set(df.index[df.Statut.isin(statuts)]))
@@ -618,52 +782,15 @@ with st.container(border=True):
     if indices:
         sel = df.loc[sorted(set.intersection(*indices))].sort_values(["Priorité", "Matricule"], ascending=[ordre == "asc", True])
         st.markdown(f"**{t('rows_of', n=len(sel), l=' · '.join(parties))}**")
-        if st.session_state.get("pick_row") not in sel.index:
-            st.session_state.pop("pick_row", None)
-        editor(sel[COLS + ["Règle", "Explication"]], "ed_sel", highlight=st.session_state.get("pick_row"), Priorité=prio_col())
+        if st.session_state.get("aide_row") not in sel.index:
+            st.session_state.pop("aide_row", None)
+        tableau_lignes(sel, st.session_state.get("aide_row"))
+        if st.session_state.get("statut_pending"):  # changement de statut demandé dans le tableau : confirmation
+            p = st.session_state.statut_pending
+            if p["id"] in df.index:
+                confirmer_statut(p["id"], p["valeur"])
         export, export_nom = sel[COLS + ["Règle", "Explication"]], "lignes_selectionnees"
 
-        if len(sel):
-            st.subheader(t("why"))
-            i = st.selectbox(t("pick"), sel.index, key="pick_row", format_func=lambda i:
-                             t("row", m=sel.Matricule[i], c=sel.Champ[i], p=sel.Priorité[i]))
-            r = df.loc[i]
-            a, b = st.columns(2)
-            a.metric(t("val_a"), r.ValeurSourceA)
-            b.metric(t("val_b"), r.ValeurDestB)
-            vk = vkey(r)
-            est_fait = is_ok(r)
-            if st.checkbox(t("mark"), value=est_fait, key=f"chk_{i}_{est_fait}") != est_fait:
-                vstate[vk] = not est_fait
-                st.session_state.edit_v = st.session_state.get("edit_v", 0) + 1
-                st.rerun()
-            st.markdown(t("verdict_line", d=dot(r.Statut), l=LABEL[r.Statut],
-                          o=TR[lang]["src"].get(r.Source_verdict, r.Source_verdict), c=r.Confiance))
-            st.markdown(t("rule_line", x=r.Règle))
-            st.markdown(t("expl_line", x=r.Explication))
-            key = f"llm_{model}_{i}"
-            if key not in st.session_state:
-                st.session_state[key] = llm.cached(r, model)
-            if st.button(t("btn_llm", m=model), disabled=not llm_ok, help=t("btn_llm_h")):
-                with st.spinner(t("llm_spin")):
-                    st.session_state[key] = llm.explain_row(r, model, device if gpus else "auto")
-                if st.session_state[key] is None:
-                    st.warning(t("llm_none"))
-            if st.session_state.get(key):
-                st.success(t("llm_expl", m=model, x=st.session_state[key]))
-            if r.Cause_probable:
-                st.markdown(t("cause", x=r.Cause_probable))
-            with st.expander(t("all_checks")):
-                show(df[df.Matricule == r.Matricule][["Champ", "ValeurSourceA", "ValeurDestB", "Statut"]])
-            st.markdown(t("expert"))
-            v = st.radio(t("correct"), ["ECART_JUSTIFIE", "ERREUR"], horizontal=True,
-                         format_func=LABEL.get, index=0 if r.Statut == "ERREUR" else 1)
-            if st.button(t("save_corr")):
-                with open(ia.BASE / "corrections.csv", "a", encoding="utf-8") as f:
-                    f.write(f"{r.Matricule},{r.Champ},{v}\n")
-                vstate[vk] = True
-                st.session_state.ver += 1
-                st.rerun()
 
     # ---- Par champ
     if "V_FIELD" in pastilles:
@@ -733,3 +860,70 @@ with st.container(border=True):
     # ---- un seul bouton : le tableau actuellement affiché
     if export is not None:
         bouton.download_button(t("dl_cur"), csv_bytes(export), f"{export_nom}.csv", "text/csv")
+
+
+# ------------------------------------------------------------------ bandeau « Explication IA locale » (bas de page)
+st.markdown("""<style>
+.st-key-bandeau_ia{position:fixed !important;left:var(--sbw,300px);right:0;bottom:0;z-index:1000;margin:0 !important;
+ width:auto !important;max-width:none !important;box-sizing:border-box;padding:14px 22px 18px;
+ border-radius:12px 12px 0 0;color:#fff;max-height:46vh;overflow:auto;
+ background:linear-gradient(135deg,#4a2d80,#8e6bbf);box-shadow:0 -4px 22px rgba(0,0,0,.45)}
+.st-key-bandeau_ia p,.st-key-bandeau_ia span,.st-key-bandeau_ia strong,.st-key-bandeau_ia em,.st-key-bandeau_ia li{color:#fff !important}
+.st-key-bandeau_ia code{background:rgba(0,0,0,.35) !important;color:#fff !important;border-radius:6px;padding:1px 6px}
+.st-key-bandeau_ia button{background:rgba(255,255,255,.16) !important;border:1px solid rgba(255,255,255,.7) !important;color:#fff !important}
+.st-key-bandeau_ia button p,.st-key-bandeau_ia button span,.st-key-bandeau_ia button div{color:#fff !important}
+.st-key-bandeau_ia button:hover{background:rgba(255,255,255,.3) !important}
+.st-key-bandeau_ia a,.st-key-bandeau_ia a *{color:#fff !important;text-decoration:underline}
+.st-key-bandeau_texte a,.st-key-bandeau_texte a *{color:#4a2d80 !important}
+.st-key-bandeau_texte{background:#fff !important;border-radius:8px;padding:12px 16px;margin-top:6px}
+.st-key-bandeau_texte p,.st-key-bandeau_texte span,.st-key-bandeau_texte strong,.st-key-bandeau_texte em{color:#1b1b1f !important}
+.st-key-bandeau_texte code{background:#eceaf3 !important;color:#1b1b1f !important}
+</style>""", unsafe_allow_html=True)
+# largeur de la barre latérale -> variable CSS --sbw : le bandeau fixe démarre exactement à son bord
+SBW_JS = """
+export default function() {
+  const sb = document.querySelector('[data-testid="stSidebar"]');
+  const set = () => document.documentElement.style.setProperty('--sbw', (sb ? sb.getBoundingClientRect().right : 0) + 'px');
+  set();
+  const ro = new ResizeObserver(set); if (sb) ro.observe(sb);
+  window.addEventListener('resize', set);
+  return () => { ro.disconnect(); window.removeEventListener('resize', set); };
+}"""
+
+
+@st.cache_resource
+def composant_sbw(version):
+    return st.components.v2.component(f"sbw_{version}", isolate_styles=False, js=SBW_JS)
+
+
+composant_sbw(hashlib.md5(SBW_JS.encode()).hexdigest()[:8])(key="sbw")
+_i = st.session_state.get("aide_row")
+if _i is not None and _i in df.index:
+    st.markdown("<div style='height:230px'></div>", unsafe_allow_html=True)  # le bandeau fixe ne masque pas la fin de la page
+    r = df.loc[_i]
+    cle_llm = f"llm_{model}_{_i}"
+    texte = llm.cached(r, model) or st.session_state.get(cle_llm)
+    echec = False
+    with st.container(key="bandeau_ia"):
+        entete, fermer = st.columns([6, 1], vertical_alignment="center")
+        cloche = icone("cloche_violette_son.png", 40)
+        entete.markdown((f'<img src="{cloche}" style="height:26px;vertical-align:middle;margin-right:8px"/>' if cloche else "")
+                        + f"**{t('ban_title')}** · `{r.Champ}` · {r.Matricule} · A : {r.ValeurSourceA} → B : {r.ValeurDestB}"
+                        f" · {dot(r.Statut)} {LABEL[r.Statut]} ({r.Confiance:.0%})", unsafe_allow_html=True)
+        fermer.button(t("ban_close"), key="aide_close", on_click=lambda: st.session_state.pop("aide_row", None), width="stretch")
+        if st.session_state.pop("aide_pending", False) and not texte:  # Ollama n'est appelé qu'après un clic sur la cloche
+            with st.spinner(t("llm_spin")):
+                texte = llm.explain_row(r, model, device if gpus else "auto")
+                st.session_state[cle_llm + "_proc"] = llm.processor(model)
+            echec = texte is None
+            if texte:
+                st.session_state[cle_llm] = texte
+        if echec:
+            st.warning(t("llm_none", m=model))
+        with st.container(key="bandeau_texte"):  # zone d'écriture blanche : texte lisible sur le fond violet
+            if texte:
+                st.markdown(texte)
+                if st.session_state.get(cle_llm + "_proc"):
+                    st.caption(t("on_proc", p=st.session_state[cle_llm + "_proc"]) + f" · {model}")
+            else:
+                st.markdown(f"{t('ban_fallback')} {r.Explication}")
