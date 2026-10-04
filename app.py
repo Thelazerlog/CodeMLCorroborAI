@@ -48,7 +48,7 @@ TR = {
     "fr": {
         "Conforme": "Conforme", "ECART_JUSTIFIE": "Écart justifié", "ERREUR": "Vraie anomalie", "A_REVUE_HUMAINE": "À relire",
         "data": "Données", "data_cap": "Par défaut, les fichiers fournis dans le dossier sont utilisés. Les fichiers sont lus en lecture seule.",
-        "up_source": "Système A – RH (source)", "up_dest": "Système B – Temps (cible)", "up_detail": "Détail du poste",
+        "up_source": "Système A – RH (Source)", "up_dest": "Système B – Temps (Destination)", "up_detail": "Détail du poste",
         "up_motif": "Motif de la situation d'emploi", "run": "Lancer la corroboration",
         "llm": "LLM local", "llm_model": "Modèle d'explication",
         "llm_help": "Utilisé uniquement quand tu cliques sur « Expliquer ». Aucune donnée ne quitte la machine.",
