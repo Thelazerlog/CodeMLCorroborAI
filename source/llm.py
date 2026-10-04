@@ -14,7 +14,7 @@ import sys
 import urllib.request
 from pathlib import Path
 
-BASE = Path(__file__).parent
+BASE = Path(__file__).resolve().parent.parent   # racine du projet
 CACHE = BASE / "outputs" / "llm_cache.json"
 HOST = os.environ.get("OLLAMA_HOST_URL", "http://localhost:11434")
 MODEL = os.environ.get("CORROBORIA_MODEL", "qwen2.5:3b")  # modèle par défaut

@@ -4,7 +4,7 @@ Pour chaque champ mappé :  valeur attendue (règles métier) vs valeur réelle 
   -> OK | ECART_JUSTIFIE (règle métier / artefact connu) | ERREUR (à investiguer)
 Chaque décision est accompagnée d'une explication.
 
-Usage : python corroboria.py   ->  rapport_corroboration.xlsx
+Usage : python source/corroboria.py   ->  rapport_corroboration.xlsx
 """
 import re
 import unicodedata
@@ -15,7 +15,7 @@ import pandas as pd
 
 import ia
 
-BASE = Path(__file__).parent
+BASE = Path(__file__).resolve().parent.parent   # racine du projet
 DATA = BASE / "data"        # extractions fournies + mapping (lecture seule)
 OUT = BASE / "outputs"      # rapports générés
 OK, JUSTIFIE, ERREUR = "OK", "ECART_JUSTIFIE", "ERREUR"

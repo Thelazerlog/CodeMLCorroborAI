@@ -32,20 +32,18 @@ Mais ce n'est pas tout ! Notre application intègre également un tableau de bor
 
 
 
-
-
 **Guide d'utilisation illustré : [`docs/guide_utilisation.html`](docs/guide_utilisation.html)** (un seul fichier, à ouvrir dans un navigateur).
 
 ## Démarrage rapide
 ```
 pip install -r requirements.txt
-python corroboria.py                       # analyse + rapport Excel (outputs/rapport_corroboration.xlsx) + modèle (modele/modele_corroboria.*)
+python source/corroboria.py                       # analyse + rapport Excel (outputs/rapport_corroboration.xlsx) + modèle (modele/modele_corroboria.*)
 python -m streamlit run app.py             # application (charger les fichiers, lancer, consulter)
 jupyter notebook CorroborIA_remise.ipynb   # notebook de remise (déjà exécuté)
-python demo.py                             # démonstration en ligne de commande : conforme, écart justifié, vraie anomalie
+python source/demo.py                             # démonstration en ligne de commande : conforme, écart justifié, vraie anomalie
 python -m pytest -v                        # tests (servent aussi de démonstration)
-python scripts/build_notebook.py           # régénère et exécute le notebook de remise (nbformat, nbclient)
-python scripts/guide/build_guide.py        # régénère docs/guide_utilisation.html à partir des captures
+python source/scripts/build_notebook.py           # régénère et exécute le notebook de remise (nbformat, nbclient)
+python source/scripts/guide/build_guide.py        # régénère docs/guide_utilisation.html à partir des captures
 ```
 - Les fichiers fournis sont dans `data/` et utilisés par défaut ; ils peuvent être remplacés depuis l'application (**Excel .xlsx ou CSV**, séparateur et encodage détectés). Ils sont **lus en lecture seule** (un test le vérifie par somme de contrôle).
 - LLM local (optionnel) : installer [Ollama](https://ollama.com) puis `ollama pull qwen2.5:3b` (équilibré), `qwen2.5:1.5b` (rapide) ou `qwen2.5:7b` (précis). Un GPU NVIDIA est utilisé automatiquement s'il existe.
@@ -53,21 +51,23 @@ python scripts/guide/build_guide.py        # régénère docs/guide_utilisation.
 
 ## Structure
 ```
-app.py                     application Streamlit
-demo.py                    démonstration en ligne de commande (3 cas)
-corroboria.py              moteur de règles, rapport Excel, glossaire
-ia.py                      modèle scikit-learn, priorité, effet des retours
-llm.py                     LLM local (Ollama) : fiche du champ, prompt, cache
-retours.py                 journal des corrections d'experts, règles apprises (seuil de 3)
-assistant.py               chatbot : questions courantes et pilotage du tableau
+app.py                     application Streamlit (point d'entrée)
+source/                    le reste du code Python
+  demo.py                  démonstration en ligne de commande (3 cas)
+  corroboria.py            moteur de règles, rapport Excel, glossaire
+  ia.py                    modèle scikit-learn, priorité, effet des retours
+  llm.py                   LLM local (Ollama) : fiche du champ, prompt, cache
+  retours.py               journal des corrections d'experts, règles apprises (seuil de 3)
+  assistant.py             chatbot : questions courantes et pilotage du tableau
+  traduction.py            traduction FR -> EN des règles, causes et explications affichées
+  tests/                   pytest (démo : conforme / justifié / anomalie, robustesse, retours, assistant)
+  scripts/                 outils de remise : build_notebook.py, guide/ (capture_guide.py, serveur_demo.py, build_guide.py)
 glossaire_ia.json          explications en langage courant des champs (données au LLM)
 corrections.csv            journal des corrections d'experts
 regles_apprises.json       règles validées par un expert (créé à la 1re validation)
 data/                      extractions A/B, mapping, tables (lecture seule)
-assets/                    logos et icônes (cloche grise/violette, crayon)
+assets/                    logos, icônes et captures d'écran du README
 docs/                      consignes, présentation, guide d'utilisation (HTML), captures (img_guide/), exemple de rapport
-scripts/                   outils de remise : build_notebook.py, guide/ (capture_guide.py, serveur_demo.py, build_guide.py)
-tests/                     pytest (démo : conforme / justifié / anomalie, robustesse, retours, assistant)
 modele/                    modèle entraîné (.joblib) et sa fiche (.json), versionnés
 outputs/                   rapport Excel, cache LLM (générés)
 CorroborIA_remise.ipynb    notebook de remise
@@ -108,10 +108,10 @@ L'application affiche ce catalogue avec les comptes réels (pastille **Glossaire
 ## Modèle entraîné
 - **Algorithme** : `RandomForestClassifier(n_estimators=200, max_depth=6, class_weight="balanced", random_state=0)`, 13 variables (similarité des textes, forme, écart numérique ou en jours, stabilité de la correspondance A→B…).
 - **Données d'entraînement** : verdicts sûrs des règles + cas synthétiques par perturbation + corrections d'experts (poids ×20). Pas de vérité terrain fournie : les scores sont indicatifs.
-- **Reproduire / fournir le modèle** : `python corroboria.py` ré-entraîne à l'identique (graine fixe) et exporte `modele/modele_corroboria.joblib` (le modèle) et `modele/modele_corroboria.json` (fiche : variables, importances, nombre d'exemples). Un test vérifie que deux entraînements donnent les mêmes verdicts.
+- **Reproduire / fournir le modèle** : `python source/corroboria.py` ré-entraîne à l'identique (graine fixe) et exporte `modele/modele_corroboria.joblib` (le modèle) et `modele/modele_corroboria.json` (fiche : variables, importances, nombre d'exemples). Un test vérifie que deux entraînements donnent les mêmes verdicts.
 
 ## Rapport et exports
-- **Excel** (`python corroboria.py` → `outputs/rapport_corroboration.xlsx` ; un exemple est fourni dans [`docs/exemple_rapport_corroboration.xlsx`](docs/exemple_rapport_corroboration.xlsx)) : onglets Erreurs à investiguer, À relire, Écarts justifiés, Résumé par champ, Détail complet. Chaque ligne porte le verdict, la règle appliquée, l'origine, la confiance, la priorité, la cause probable et l'explication.
+- **Excel** (`python source/corroboria.py` → `outputs/rapport_corroboration.xlsx` ; un exemple est fourni dans [`docs/exemple_rapport_corroboration.xlsx`](docs/exemple_rapport_corroboration.xlsx)) : onglets Erreurs à investiguer, À relire, Écarts justifiés, Résumé par champ, Détail complet. Chaque ligne porte le verdict, la règle appliquée, l'origine, la confiance, la priorité, la cause probable et l'explication.
 - **CSV depuis l'application** : bouton « Télécharger le tableau actuellement affiché - CSV » (séparateur `;`, UTF-8 avec BOM, s'ouvre dans Excel). Avec la pastille **Tout** : le rapport complet. Les colonnes incluent verdict, règle, explication, code d'emploi et type d'affectation pour investiguer.
 
 ## Retours d'experts et règles apprises (`retours.py`)

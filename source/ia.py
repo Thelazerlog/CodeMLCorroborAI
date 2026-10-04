@@ -17,7 +17,7 @@ from sklearn.ensemble import RandomForestClassifier
 
 import retours
 
-BASE = Path(__file__).parent
+BASE = Path(__file__).resolve().parent.parent   # racine du projet
 OK, JUSTIFIE, ERREUR, REVUE = "OK", "ECART_JUSTIFIE", "ERREUR", "A_REVUE_HUMAINE"
 LOW, HIGH = 0.35, 0.65  # zone d'incertitude -> revue humaine
 
@@ -165,7 +165,7 @@ def train(df, X_all, corr=None):
 
 def sauver_modele(clf, n_exemples, n_corrections):
     """Exporte le modèle entraîné (modele/modele_corroboria.joblib) et sa fiche (JSON) : le modèle est ré-entraînable à
-    l'identique avec `python corroboria.py` (graine fixe, mêmes données, mêmes règles)."""
+    l'identique avec `python source/corroboria.py` (graine fixe, mêmes données, mêmes règles)."""
     try:
         import joblib
         sortie = BASE / "modele"

@@ -1,8 +1,9 @@
-"""Application CorroborIA : streamlit run app.py"""
+"""Application CorroborIA : python -m streamlit run app.py"""
 import base64
 import hashlib
 import re
 import io
+import sys
 import unicodedata
 from pathlib import Path
 
@@ -11,14 +12,16 @@ import pandas as pd
 import streamlit as st
 from PIL import Image, ImageChops
 
-import corroboria
-import ia
-import assistant
-import llm
-import retours
-import traduction
+sys.path.insert(0, str(Path(__file__).resolve().parent / "source"))   # le code est dans source/
 
-HERE = Path(__file__).parent
+import corroboria  # noqa: E402
+import ia  # noqa: E402
+import assistant  # noqa: E402
+import llm  # noqa: E402
+import retours  # noqa: E402
+import traduction  # noqa: E402
+
+HERE = Path(__file__).resolve().parent   # racine du projet (assets/, data/, modele/…)
 ASSETS = HERE / "assets"
 IMG = (".png", ".jpg", ".jpeg", ".webp", ".svg")
 

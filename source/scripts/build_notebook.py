@@ -32,10 +32,10 @@ import sys, os, json, subprocess
 from pathlib import Path
 
 ROOT = Path.cwd()
-if not (ROOT / "corroboria.py").exists():      # notebook lancé depuis un sous-dossier
+if not (ROOT / "source" / "corroboria.py").exists():      # notebook lancé depuis un sous-dossier
     ROOT = ROOT.parent
 os.chdir(ROOT)
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "source"))
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -98,7 +98,7 @@ plt.show()
 
 md("""
 **Modèle entraîné** : `RandomForestClassifier(n_estimators=200, max_depth=6, class_weight="balanced", random_state=0)` sur 13 variables. Il est exporté
-(`modele/modele_corroboria.joblib`) avec sa fiche (`modele/modele_corroboria.json`) et se **ré-entraîne à l'identique** avec `python corroboria.py` (graine fixe).
+(`modele/modele_corroboria.joblib`) avec sa fiche (`modele/modele_corroboria.json`) et se **ré-entraîne à l'identique** avec `python source/corroboria.py` (graine fixe).
 """)
 code("""
 fiche = json.loads((ROOT / "modele" / "modele_corroboria.json").read_text(encoding="utf-8"))
@@ -264,7 +264,8 @@ code("""
 corroboria.report(df)
 for f in sorted((ROOT / "outputs").glob("rapport_corroboration*.xlsx")):
     print(f.name, f"{f.stat().st_size / 1024:.0f} Ko")
-print("Feuilles :", pd.ExcelFile(ROOT / "outputs" / "rapport_corroboration.xlsx").sheet_names)
+dernier = max((ROOT / "outputs").glob("rapport_corroboration*.xlsx"), key=lambda f: f.stat().st_mtime)   # le plus récent (si le rapport habituel est ouvert dans Excel)
+print("Feuilles :", pd.ExcelFile(dernier).sheet_names)
 """)
 
 md("""
@@ -301,5 +302,5 @@ nb["cells"] = C
 nb["metadata"] = {"kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"}}
 client = NotebookClient(nb, timeout=600, kernel_name="python3", resources={"metadata": {"path": r"C:\Users\nicol\OneDrive\Documents\Hackathlon"}})
 client.execute()
-nbf.write(nb, str(Path(__file__).resolve().parents[1] / "CorroborIA_remise.ipynb"))
+nbf.write(nb, str(Path(__file__).resolve().parents[2] / "CorroborIA_remise.ipynb"))
 print("notebook ok")

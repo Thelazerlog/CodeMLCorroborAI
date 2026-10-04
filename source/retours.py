@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pandas as pd
 
-BASE = Path(__file__).parent
+BASE = Path(__file__).resolve().parent.parent   # racine du projet
 JOURNAL = BASE / "corrections.csv"
 REGLES = BASE / "regles_apprises.json"
 SEUIL_REGLE = 3  # nombre minimal de corrections concordantes pour proposer une règle

@@ -15,7 +15,7 @@ import ia
 import llm
 import retours
 
-BASE = Path(__file__).parent.parent
+BASE = Path(__file__).resolve().parents[2]
 DATA = BASE / "data"
 REAL_SRC = pd.read_excel(DATA / "Employe_Source_Anonymise_VF.xlsx")
 MOTIF = pd.DataFrame({"CodeCatégorieStatut": [703, 807], "CodeStatutSystèmeExterne": [100, 170],
@@ -299,7 +299,7 @@ def test_modele_exportable_et_reproductible(tmp_path, monkeypatch):
 
 
 def test_les_tests_n_ecrasent_pas_le_vrai_modele():
-    avant = (Path(__file__).parent.parent / "modele" / "modele_corroboria.json")
+    avant = (Path(__file__).resolve().parents[2] / "modele" / "modele_corroboria.json")
     stamp = avant.stat().st_mtime if avant.exists() else None
     ia.enrich(c.run())                                     # sans exporter_modele : aucun fichier écrit
     assert (avant.stat().st_mtime if avant.exists() else None) == stamp

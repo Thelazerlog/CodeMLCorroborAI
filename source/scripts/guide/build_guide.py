@@ -1,14 +1,14 @@
 """Construit le guide d'utilisation (docs/guide_utilisation.html) : un seul fichier HTML, images intégrées (base64).
 
-    python scripts/guide/capture_guide.py     # (re)génère les captures dans docs/img_guide/
-    python scripts/guide/build_guide.py       # assemble docs/guide_utilisation.html
+    python source/scripts/guide/capture_guide.py     # (re)génère les captures dans docs/img_guide/
+    python source/scripts/guide/build_guide.py       # assemble docs/guide_utilisation.html
 """
 import base64
 import html
 from datetime import date
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 IMG = ROOT / "docs" / "img_guide"
 SORTIE = ROOT / "docs" / "guide_utilisation.html"
 
@@ -371,7 +371,7 @@ sec("technique", "Notebook, tests et organisation du projet", f"""
 <tr><td><code>ia.py</code></td><td>Modèle scikit-learn, priorité, effet des retours.</td></tr><tr><td><code>llm.py</code></td><td>LLM local : fiche du champ, prompt, cache.</td></tr>
 <tr><td><code>retours.py</code></td><td>Journal des corrections, règles apprises.</td></tr><tr><td><code>assistant.py</code></td><td>Chatbot.</td></tr>
 <tr><td><code>glossaire_ia.json</code></td><td>Explications en langage courant des champs (modifiable).</td></tr><tr><td><code>corrections.csv</code>, <code>regles_apprises.json</code></td><td>Retours d'experts.</td></tr></table>
-<p>Pour régénérer ce guide : <code>python scripts/guide/capture_guide.py</code> puis <code>python scripts/guide/build_guide.py</code>.</p>
+<p>Pour régénérer ce guide : <code>python source/scripts/guide/capture_guide.py</code> puis <code>python source/scripts/guide/build_guide.py</code>.</p>
 """)
 
 # ====================================================================== 17

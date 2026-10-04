@@ -1,6 +1,6 @@
 """Démonstration en ligne de commande : un cas conforme, un écart justifié automatiquement, une vraie anomalie.
 
-    python demo.py
+    python source/demo.py
 
 Chaque cas montre les deux valeurs, le verdict, la règle appliquée, l'origine (règle déterministe ou IA locale), la confiance et
 l'explication. Les fichiers fournis (data/) sont lus en lecture seule.
