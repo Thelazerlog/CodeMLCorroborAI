@@ -5,6 +5,7 @@
 pip install -r requirements.txt
 python corroboria.py          # génère rapport_corroboration.xlsx
 python -m streamlit run app.py   # application
+jupyter notebook CorroborIA_remise.ipynb   # notebook de remise (déjà exécuté)
 python -m pytest -v           # tests (servent aussi de démo : conforme / justifié / anomalie)
 ```
 LLM local (optionnel) : installer [Ollama](https://ollama.com) puis `ollama pull qwen2.5:3b`. Autre modèle : variable `CORROBORIA_MODEL`.
@@ -16,6 +17,7 @@ app.py            application Streamlit        data/     extractions A/B, mappin
 corroboria.py     moteur de règles             assets/   logos (détectés par leur nom : corrobor*, loto*/quebec*)
 ia.py             modèle scikit-learn          docs/     consignes et présentation
 llm.py            LLM local (Ollama)           tests/    pytest (démo : conforme / justifié / anomalie)
+CorroborIA_remise.ipynb   notebook de remise
 corrections.csv   retours d'experts            outputs/  rapports et cache LLM générés
 ```
 
@@ -28,8 +30,9 @@ corrections.csv   retours d'experts            outputs/  rapports et cache LLM g
 ## Application
 - **En-tête** : logo, titre (CorroborIA / CorroborAI en anglais), interrupteur de langue FR/EN, logo Loto-Québec.
 - **Tableau de bord** : anneau interactif (conforme / écart justifié / vraie anomalie / à relire) et indicateurs clés, dont la confiance générale du modèle (IA + vraies anomalies).
-- **Seuil de confiance** (curseur sous l'anneau) : tout écart non conforme dont la confiance est sous le seuil passe dans « À relire », et l'anneau suit le curseur.
-- **À faire** : lignes à investiguer (catégories au choix : vraie anomalie, écarts justifiés), barre de progression et premières lignes à vérifier ; un clic ouvre la ligne en surbrillance dans le tableau.
+- **Seuil de confiance** (curseur sous l'anneau) : tout écart non conforme dont la confiance est sous le seuil (0-100 %, 90 % par défaut) passe dans « À relire », et l'anneau suit le curseur. Les vraies anomalies n'y passent que si l'option *Relire les vraies anomalies sous le seuil* (onglet Paramètres, « Non » par défaut) est activée.
+- **Barre de revue humaine** (tableau de bord) : lignes « À relire » vérifiées sur le total, avec message d'encouragement.
+- **Données sélectionnées** : tableau des lignes choisies par pastilles de statut ou par clic sur l'anneau et les camemberts, avec tri par priorité.
 - **Investiguer les données** : exports et onglets Vraie anomalie, Écarts justifiés (colonne « Vérifié » cochable, pré-cochée en gris au-dessus du seuil), Par champ, Tout, Glossaire, **Paramètres** (poids du score de priorité et gravité par variable, modifiables).
 - Les réglages et les lignes vérifiées ne sont conservés que pendant la session.
 

@@ -84,7 +84,7 @@ TR = {
         "expert": "**Retour d'expert** : corriger ce verdict (appris aux prochaines exécutions)",
         "correct": "Verdict correct", "save_corr": "Enregistrer la correction",
         "just_cap": "Différences acceptables : une règle métier ou un artefact connu les explique.",
-        "gloss_cap": "Champs corroborés (d'après le fichier de mapping) et codes utilisés.", "codes": "Codes",
+        "gloss_cap": "Champs corroborés (d'après le fichier de mapping) et codes utilisés.", "codes": "Codes", "gloss_fields": "Champs",
         "code": "Code", "meaning": "Signification",
         "set_title": "Score de priorité", "set_intro": "Le score (0-100) des erreurs est : gravité du champ × poids + confiance × poids + récurrence × poids. "
                     "Les poids sont normalisés (leur somme est ramenée à 100 %). Les changements s'appliquent immédiatement au tableau de bord et aux tableaux.",
@@ -95,6 +95,13 @@ TR = {
         "hist_title": "Confiance du modèle", "cause_title": "Cause probable", "emp_title": "Employé", "others": "Autres", "unspecified": "Non précisée",
         "conf_axis": "Confiance", "gpu_found": "GPU NVIDIA détecté : {g}", "gpu_none": "Aucun GPU NVIDIA détecté : calcul sur CPU.",
         "device": "Calcul", "dev_auto": "Automatique (GPU si disponible)", "dev_cpu": "CPU seulement", "on_proc": "Modèle chargé sur : {p}",
+        "click_hint": "Clique sur une part de l'anneau ou d'un camembert, ou choisis une pastille, pour afficher les lignes correspondantes.", "rows_of": "{n} lignes : {l}",
+        "selected": "Données sélectionnées", "fun": ["À vous de jouer", "Bon début", "On avance bien", "Plus qu'un petit effort", "Presque fini", "Mission accomplie"],
+        "fun_lbl": "Revue humaine", "rev_title": "Relecture", "rev_opt": "Relire les vraies anomalies sous le seuil de confiance",
+        "rev_help": "Non : une vraie anomalie n'est jamais à relire (elle ne compte pas dans « À faire »). Oui : sous le seuil de confiance, elle passe en « À relire » et compte dans « À faire ».",
+        "yes": "Oui", "no": "Non", "pick_pills": "Afficher", "and_cause": "cause", "and_emp": "employé",
+        "sort_lbl": "Trier", "sort_desc": "Priorité décroissante", "sort_asc": "Priorité croissante",
+        "dl_cur": "Télécharger le tableau actuellement affiché - CSV", "v_all": "Tout", "v_field": "Par champ", "v_gloss": "Glossaire", "v_set": "Paramètres",
         "todo_title": "À faire", "scope": "Données à investiguer", "todo_n": "Lignes à investiguer", "todo_left": "Restantes",
         "seuil": "Seuil de confiance minimal", "seuil_help": "En dessous de ce seuil, une validation humaine est nécessaire.",
         "todo_cap": "À investiguer : toutes les erreurs et cas à revoir, plus les écarts justifiés par l'IA dont la confiance est sous le seuil.",
@@ -144,7 +151,7 @@ TR = {
         "expert": "**Expert feedback**: correct this verdict (learned on next runs)",
         "correct": "Correct verdict", "save_corr": "Save the correction",
         "just_cap": "Acceptable differences: a business rule or a known artefact explains them.",
-        "gloss_cap": "Corroborated fields (from the mapping file) and codes used.", "codes": "Codes",
+        "gloss_cap": "Corroborated fields (from the mapping file) and codes used.", "codes": "Codes", "gloss_fields": "Fields",
         "code": "Code", "meaning": "Meaning",
         "set_title": "Priority score", "set_intro": "The score (0-100) of errors is: field severity × weight + confidence × weight + recurrence × weight. "
                     "Weights are normalised (their sum is brought back to 100%). Changes apply immediately to the dashboard and tables.",
@@ -155,6 +162,13 @@ TR = {
         "hist_title": "Model confidence", "cause_title": "Probable cause", "emp_title": "Employee", "others": "Others", "unspecified": "Unspecified",
         "conf_axis": "Confidence", "gpu_found": "NVIDIA GPU detected: {g}", "gpu_none": "No NVIDIA GPU detected: running on CPU.",
         "device": "Compute", "dev_auto": "Automatic (GPU if available)", "dev_cpu": "CPU only", "on_proc": "Model loaded on: {p}",
+        "click_hint": "Click a slice of the ring or of a pie, or pick a pill, to display the matching rows.", "rows_of": "{n} rows: {l}",
+        "selected": "Selected data", "fun": ["Your move", "Good start", "Making progress", "Just a little more", "Almost done", "Mission accomplished"],
+        "fun_lbl": "Human review", "rev_title": "Review", "rev_opt": "Re-read true anomalies below the confidence threshold",
+        "rev_help": "No: a true anomaly is never re-read (it does not count in \"To do\"). Yes: below the confidence threshold, it becomes \"To review\" and counts in \"To do\".",
+        "yes": "Yes", "no": "No", "pick_pills": "Show", "and_cause": "cause", "and_emp": "employee",
+        "sort_lbl": "Sort", "sort_desc": "Highest priority first", "sort_asc": "Lowest priority first",
+        "dl_cur": "Download the table currently displayed - CSV", "v_all": "All", "v_field": "By field", "v_gloss": "Glossary", "v_set": "Settings",
         "todo_title": "To do", "scope": "Data to investigate", "todo_n": "Rows to investigate", "todo_left": "Remaining",
         "seuil": "Minimum confidence threshold", "seuil_help": "Below this threshold, human validation is required.",
         "todo_cap": "To investigate: all errors and review cases, plus AI-justified gaps whose confidence is below the threshold.",
@@ -219,6 +233,13 @@ def styled(d, highlight=None):
     if highlight is not None:
         s = s.apply(lambda r: ["background-color: rgba(255, 193, 7, .35)" if r.name == highlight else "" for _ in r], axis=1)
     return s
+
+
+def prio_col():
+    """Colonne Priorité en barre 0-100, identique dans tous les tableaux."""
+    return st.column_config.ProgressColumn(TR[lang]["cols"].get("Priorité", "Priorité"), min_value=0, max_value=100,
+                                           format="%d / 100",
+                                           help=t("prio_help", g=wn["gravite"], c=wn["confiance"], r=wn["recurrence"]))
 
 
 def show(d, highlight=None, **cfg):
@@ -323,11 +344,16 @@ except Exception as e:
 
 # paramètres du score de priorité (onglet Paramètres) : relus ici pour s'appliquer à tout l'écran
 W_DEF = {k: int(round(v * 100)) for k, v in ia.WEIGHTS.items()}
-weights = {k: st.session_state.get(f"w_{k}", W_DEF[k]) / 100 for k in W_DEF}
+for _k, _v in [*((f"w_{k}", v) for k, v in W_DEF.items()), ("relire_anom", False)]:
+    st.session_state.setdefault(_k, _v)
+    st.session_state[_k] = st.session_state[_k]  # garde la valeur même si le widget n'est pas affiché dans ce tour
+weights = {k: st.session_state[f"w_{k}"] / 100 for k in W_DEF}
 sev_user = st.session_state.get("sev", {})
-seuil = st.session_state.get("seuil", 95) / 100
+seuil = st.session_state.get("seuil", 90) / 100
+relire_anom = st.session_state["relire_anom"]  # option Paramètres : relire aussi les vraies anomalies sous le seuil
 df = df.assign(StatutInit=df.Statut)  # verdict d'origine, avant application du seuil
-df.loc[(df.Statut != "OK") & (df.Confiance.astype(float) < seuil), "Statut"] = "A_REVUE_HUMAINE"
+df.loc[(df.Statut != "OK") & (df.Confiance.astype(float) < seuil) & ((df.StatutInit != "ERREUR") | relire_anom),
+       "Statut"] = "A_REVUE_HUMAINE"
 df = df.assign(Priorité=ia.priorite(df, weights, sev_user))
 wsum = sum(weights.values()) or 1.0
 wn = {k: v / wsum for k, v in weights.items()}
@@ -340,9 +366,9 @@ def vkey(r):
     return f"{r.Matricule}|{r.Champ}|{r.TypeAffectation}|{r.ValeurSourceA}|{r.ValeurDestB}"
 
 
-scope = st.session_state.get("scope", ["ERREUR", "ECART_JUSTIFIE"])  # catégories choisies dans « À faire »
-a_faire = df[df.Statut.isin(["ERREUR", "A_REVUE_HUMAINE"])
-             & (df.StatutInit.isin(scope) | (df.StatutInit == "A_REVUE_HUMAINE"))]
+scope = ["ERREUR", "ECART_JUSTIFIE"]  # catégories prises en compte dans la barre de revue humaine
+# à faire = lignes « À relire » (confiance sous le seuil) ; une vraie anomalie n'en fait partie que si l'option Paramètres est sur « Oui »
+a_faire = df[(df.Statut == "A_REVUE_HUMAINE") & (df.StatutInit.isin(scope) | (df.StatutInit == "A_REVUE_HUMAINE"))]
 a_faire = a_faire.sort_values(["Priorité", "Confiance"], ascending=[False, True])
 
 
@@ -384,26 +410,52 @@ ORDER = ["OK", "ECART_JUSTIFIE", "ERREUR", "A_REVUE_HUMAINE"]
 c = df.Statut.value_counts()
 total = len(df)
 n = {s: int(c.get(s, 0)) for s in ORDER}
+SHOWN = [s for s in ORDER if s != "A_REVUE_HUMAINE" or n[s] > 0]  # « À relire » n'apparaît que s'il y a des lignes
 a_investiguer = df[df.Statut.isin(["ERREUR", "A_REVUE_HUMAINE"])].sort_values("Priorité", ascending=False)
 
 
 def donut():
     """Camembert en anneau interactif : survol = mise en avant + infobulle."""
-    data = pd.DataFrame({t("verdict"): [LABEL[s] for s in ORDER], t("count"): [n[s] for s in ORDER]})
+    data = pd.DataFrame({t("verdict"): [LABEL[s] for s in SHOWN], t("count"): [n[s] for s in SHOWN]})
     data[t("share")] = data[t("count")] / max(total, 1)
+    data["Taille"] = data[t("count")].clip(lower=total * 0.012)  # une petite part (ex. 2 lignes) reste visible
     hover = alt.selection_point(fields=[t("verdict")], on="pointerover", clear="pointerout")
+    click = alt.selection_point(name="part", fields=[t("verdict")])
     arc = (alt.Chart(data).mark_arc(innerRadius=62, outerRadius=100, cornerRadius=4, padAngle=0.02)
-           .encode(theta=alt.Theta(f"{t('count')}:Q", stack=True),
+           .encode(theta=alt.Theta("Taille:Q", stack=True),
                    color=alt.Color(f"{t('verdict')}:N", sort=[LABEL[s] for s in ORDER], legend=None,
                                    scale=alt.Scale(domain=[LABEL[s] for s in ORDER], range=[HEX[s] for s in ORDER])),
                    opacity=alt.condition(hover, alt.value(1), alt.value(0.35)),
                    tooltip=[f"{t('verdict')}:N", f"{t('count')}:Q", alt.Tooltip(f"{t('share')}:Q", format=".1%")])
-           .add_params(hover))
+           .add_params(hover, click))
     centre = (alt.Chart(pd.DataFrame({"t": [f"{total}"]})).mark_text(size=28, fontWeight="bold", dy=-8)
               .encode(text="t:N"))
     sous = (alt.Chart(pd.DataFrame({"t": [t("checks")]})).mark_text(size=12, dy=16, opacity=0.7)
             .encode(text="t:N"))
     return (arc + centre + sous).properties(height=224, padding={"top": 12, "bottom": 12, "left": 4, "right": 4})
+
+
+def barre_completion(fait_n, total_n):
+    """Barre de complétion de la revue humaine : rayures animées, repères 25/50/75 %, message d'encouragement."""
+    pct = 100 if total_n == 0 else round(100 * fait_n / total_n)
+    msgs = TR[lang]["fun"]
+    msg = msgs[0] if pct == 0 else msgs[1] if pct < 25 else msgs[2] if pct < 50 else msgs[3] if pct < 75 else msgs[4] if pct < 100 else msgs[5]
+    fini = pct >= 100
+    fond = ("linear-gradient(90deg,#2e9e5b,#6fcf97)" if fini else
+            "repeating-linear-gradient(45deg,#479ea0 0,#479ea0 10px,#1c5b8c 10px,#1c5b8c 20px)")
+    # l'animation ne joue que quand la progression vient de changer (3 passages), jamais en continu
+    change = st.session_state.get("_prev_pct") not in (None, pct)
+    st.session_state["_prev_pct"] = pct
+    anim = "background-size:28px 28px;" + ("animation:cbar .7s linear 3;" if change and not fini else "")
+    reperes = "".join(f'<span style="position:absolute;left:{p}%;top:0;bottom:0;width:2px;background:rgba(255,255,255,.55)"></span>'
+                      for p in (25, 50, 75))
+    st.markdown(
+        "<style>@keyframes cbar{to{background-position:28px 0}}</style>"
+        f'<div style="margin-top:12px"><div style="display:flex;justify-content:space-between;font-size:.9rem;margin-bottom:4px">'
+        f'<span><b>{TR[lang]["fun_lbl"]}</b> : {msg}</span><span><b>{fait_n}/{total_n}</b> ({pct} %)</span></div>'
+        f'<div style="position:relative;height:18px;border-radius:12px;background:rgba(128,128,128,.28);overflow:hidden">'
+        f'<div style="width:{pct}%;height:100%;border-radius:12px;background:{fond};{anim}transition:width .6s ease"></div>'
+        f'{reperes}</div></div>', unsafe_allow_html=True)
 
 
 def section(titre, top=24):
@@ -417,15 +469,15 @@ with st.container(border=True):
     with g:
         gc, gl = st.columns([1, 1], vertical_alignment="center")
         with gc:
-            st.altair_chart(donut(), width="stretch")
+            evt = st.altair_chart(donut(), width="stretch", on_select="rerun", key="donut")
         with gl:
             rows = "".join(
                 f'<div style="display:flex;align-items:center;gap:10px;margin:7px 0;font-size:1.05rem">'
                 f'<span style="color:{HEX[s]};font-size:1.5rem;line-height:1">&#9679;</span>'
-                f'<span>{LABEL[s]} <b>{n[s]}</b></span></div>' for s in ORDER)
+                f'<span>{LABEL[s]} <b>{n[s]}</b></span></div>' for s in SHOWN)
             st.markdown(f'<div style="display:flex;flex-direction:column;justify-content:center">{rows}</div>',
                         unsafe_allow_html=True)
-        st.slider(t("seuil"), 50, 100, 95, 1, format="%d %%", key="seuil", help=t("seuil_help"))
+        st.slider(t("seuil"), 0, 100, 90, 1, format="%d %%", key="seuil", help=t("seuil_help"))
 
     with d:
         taux = n["OK"] / max(total, 1)
@@ -445,6 +497,7 @@ with st.container(border=True):
             st.markdown(t("top1", c=top.Champ, m=top.Matricule, p=top.Priorité) + "  \n"
                         + t("top_field", c=vc.index[0], n=int(vc.iloc[0])) + "  \n"
                         + t("by_ai", a=par_ia, b=total - n["OK"], c=conf))
+        barre_completion(int(fait.sum()), len(a_faire))
 
 
 PALETTE = ["#1c5b8c", "#479ea0", "#8cc4b8", "#f2a65a", "#b56576", "#6a994e", "#9aa5b1"]
@@ -468,22 +521,35 @@ def histogram():
             .properties(height=176, padding={"top": 6, "bottom": 6, "left": 4, "right": 4}))
 
 
-def pie(serie, hauteur=134):
-    """Camembert des modalités les plus fréquentes (le reste regroupé dans « Autres »)."""
+def etiquette(serie):
+    """Étiquette de chaque ligne dans un camembert : les 3 modalités les plus fréquentes, le reste en « Autres »."""
     vc = serie.value_counts()
-    if len(vc) > 4:
-        vc = pd.concat([vc.head(3), pd.Series({t("others"): int(vc.iloc[3:].sum())})])
+    top = list(vc.index) if len(vc) <= 4 else list(vc.head(3).index)
+    return serie.where(serie.isin(top), t("others")).astype(str)
+
+
+def cause_serie(x):
+    """Cause probable ; à défaut (écarts justifiés), la règle appliquée."""
+    return x.Cause_probable.where(x.Cause_probable.astype(bool), x.Règle).replace("", t("unspecified"))
+
+
+def pie(serie, cle, hauteur=152):
+    """Camembert cliquable des modalités les plus fréquentes (le reste regroupé dans « Autres »)."""
+    vc = etiquette(serie).value_counts()
     data = pd.DataFrame({"Libellé": [str(i) for i in vc.index], t("count"): vc.values})
     hover = alt.selection_point(fields=["Libellé"], on="pointerover", clear="pointerout")
-    return (alt.Chart(data).mark_arc(innerRadius=0, outerRadius=62, stroke="white", strokeWidth=1)
-            .encode(theta=alt.Theta(f"{t('count')}:Q", stack=True),
-                    color=alt.Color("Libellé:N", sort=list(data["Libellé"]), scale=alt.Scale(range=PALETTE),
-                                    legend=alt.Legend(orient="right", title=None, symbolType="circle", labelFontSize=10,
-                                                      labelLimit=92, rowPadding=0, symbolSize=40)),
-                    opacity=alt.condition(hover, alt.value(1), alt.value(0.45)),
-                    tooltip=["Libellé:N", f"{t('count')}:Q"])
-            .add_params(hover)
-            .properties(height=hauteur, padding={"top": 6, "bottom": 6, "left": 4, "right": 4}))
+    click = alt.selection_point(name="part", fields=["Libellé"])
+    chart = (alt.Chart(data).mark_arc(innerRadius=0, outerRadius=62, stroke="white", strokeWidth=1)
+             .encode(theta=alt.Theta(f"{t('count')}:Q", stack=True),
+                     color=alt.Color("Libellé:N", sort=list(data["Libellé"]), scale=alt.Scale(range=PALETTE),
+                                     legend=alt.Legend(orient="right", title=None, symbolType="circle", labelFontSize=13,
+                                                       labelLimit=108, rowPadding=1, symbolSize=90)),
+                     opacity=alt.condition(hover, alt.value(1), alt.value(0.45)),
+                     tooltip=["Libellé:N", f"{t('count')}:Q"])
+             .add_params(hover, click)
+             .properties(height=hauteur, padding={"top": 6, "bottom": 6, "left": 4, "right": 4}))
+    ev = st.altair_chart(chart, width="stretch", on_select="rerun", key=cle)
+    return [p.get("Libellé") for p in (ev.selection.get("part") or [])] if ev else []
 
 
 def valeur(cle):
@@ -504,13 +570,11 @@ with st.container(border=True):
         st.altair_chart(histogram(), width="stretch")
     with h2c:
         st.markdown(f"**{t('cause_title')}**")
-        x = df[df.StatutInit == valeur("pie_cause")]
-        cause = x.Cause_probable.where(x.Cause_probable.astype(bool), x.Règle).replace("", t("unspecified"))
-        st.altair_chart(pie(cause), width="stretch")
+        lab_cause = pie(cause_serie(df[df.StatutInit == valeur("pie_cause")]), "pie_cause_chart")
         choix("pie_cause")
     with h3c:
         st.markdown(f"**{t('emp_title')}**")
-        st.altair_chart(pie(df[df.StatutInit == valeur("pie_emp")].Matricule.astype(str)), width="stretch")
+        lab_emp = pie(df[df.StatutInit == valeur("pie_emp")].Matricule.astype(str), "pie_emp_chart")
         choix("pie_emp")
 
 
@@ -518,149 +582,129 @@ def csv_bytes(d):  # séparateur ; et BOM UTF-8 : s'ouvre correctement dans Exce
     return d.drop(columns=["RefAlt", "Nature", "StatutInit"], errors="ignore").to_csv(index=False, sep=";").encode("utf-8-sig")
 
 
-def open_row(i):
-    """Ouvre la ligne i dans « Investiguer les données » (filtres effacés, ligne sélectionnée et surlignée)."""
-    if df.loc[i].StatutInit == "ECART_JUSTIFIE":
-        st.session_state.hl_just = i
-    else:
-        st.session_state.f_champs, st.session_state.f_mats = [], []
-        st.session_state.pick_row = i
-    st.toast(t("opened"))
-
-
-section(t("todo_title"))
+section(t("selected"))
+VUES = ["V_ALL", "V_FIELD", "V_GLOSS", "V_SET"]
+NOM_VUE = {"V_ALL": "v_all", "V_FIELD": "v_field", "V_GLOSS": "v_gloss", "V_SET": "v_set"}
 with st.container(border=True):
-    g2, d2_ = st.columns(2, gap="large")
-    with g2:
-        nb, nr = len(a_faire), int((~fait).sum())
-        m1, m2 = st.columns(2)
-        m1.metric(t("todo_n"), nb)
-        m2.metric(t("todo_left"), nr)
-        st.pills(t("scope"), ["ERREUR", "ECART_JUSTIFIE"], selection_mode="multi", default=["ERREUR", "ECART_JUSTIFIE"],
-                 format_func=LABEL.get, key="scope")
-        st.progress((nb - nr) / nb if nb else 1.0, text=t("progress", d=nb - nr, n=nb))
-        st.caption(t("todo_cap"))
-    with d2_:
-        st.markdown(f"**{t('next_title')}**")
-        restantes = a_faire[~fait]
-        if restantes.empty:
-            st.success(t("all_done"))
-        for i, r in restantes.head(5).iterrows():
-            conf_txt = f" · {r.Confiance:.0%}" if r.Source_verdict == "IA" else ""
-            st.button(f"{dot(r.Statut)} {r.Champ} · {r.Matricule} · {r.Priorité}/100{conf_txt}", key=f"todo_{i}",
-                      on_click=open_row, args=(i,), width="stretch")
-
-
-section(t("investigate"))
-with st.container(border=True):
-    d1, d2, d3, d4 = st.columns(4)
-    d1.download_button(t("dl_xlsx"), corroboria.to_excel_bytes(df.drop(columns="StatutInit")), "rapport_corroboration.xlsx",
-                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    d2.download_button(t("dl_all"), csv_bytes(df), "corroboration_complet.csv", "text/csv")
-    d3.download_button(t("dl_err"), csv_bytes(df[df.Statut.isin(["ERREUR", "A_REVUE_HUMAINE"])]),
-                       "corroboration_erreurs.csv", "text/csv")
-    d4.download_button(t("dl_just"), csv_bytes(df[df.Statut == "ECART_JUSTIFIE"]),
-                       "corroboration_justifies.csv", "text/csv")
+    pastilles = st.pills(t("pick_pills"), SHOWN + VUES, selection_mode="multi", key="sel_stat",
+                         format_func=lambda v: t(NOM_VUE[v]) if v in NOM_VUE else LABEL[v]) or []
+    ordre = st.segmented_control(t("sort_lbl"), ["desc", "asc"], default="desc", key="sel_sort",
+                                 format_func=lambda o: t("sort_" + o)) or "desc"
+    bouton = st.container()  # bouton d'export, rempli une fois le tableau affiché connu
+    export, export_nom = None, "tableau"
     if lang == "en":
         st.caption(t("free_text"))
 
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([f"{dot('ERREUR')} {t('tab_inv')}", f"{dot('ECART_JUSTIFIE')} {t('tab_just')}",
-                                                  t("tab_field"), t("tab_all"), t("tab_gloss"), t("tab_set")])
+    choisies = [p.get(t("verdict")) for p in (evt.selection.get("part") or [])] if evt else []
+    statuts = [s for s in SHOWN if LABEL[s] in choisies or s in pastilles or "V_ALL" in pastilles]
+    indices, parties = [], []
+    if statuts:
+        indices.append(set(df.index[df.Statut.isin(statuts)]))
+        parties.append(t("v_all") if "V_ALL" in pastilles else ", ".join(LABEL[s] for s in statuts))
+    if lab_cause:
+        sub = df[df.StatutInit == valeur("pie_cause")]
+        et = etiquette(cause_serie(sub))
+        indices.append(set(et.index[et.isin(lab_cause)]))
+        parties.append(f"{t('and_cause')} : {', '.join(lab_cause)}")
+    if lab_emp:
+        sub = df[df.StatutInit == valeur("pie_emp")]
+        et = etiquette(sub.Matricule.astype(str))
+        indices.append(set(et.index[et.isin(lab_emp)]))
+        parties.append(f"{t('and_emp')} : {', '.join(lab_emp)}")
+    if not indices and not any(v in pastilles for v in VUES):
+        st.caption(t("click_hint"))
 
-    with tab1:
-        err = a_faire[a_faire.StatutInit != "ECART_JUSTIFIE"]
-        if err.empty:
-            st.success(t("no_err"))
-        else:
-            f1, f2 = st.columns(2)
-            champs = f1.multiselect(t("f_field"), sorted(err.Champ.unique()), key="f_champs")
-            mats = f2.multiselect(t("f_emp"), sorted(err.Matricule.unique()), key="f_mats")
-            if champs:
-                err = err[err.Champ.isin(champs)]
-            if mats:
-                err = err[err.Matricule.isin(mats)]
-            editor(err[COLS], "ed_inv", highlight=st.session_state.get("pick_row"), Priorité=st.column_config.ProgressColumn(
-                TR[lang]["cols"].get("Priorité", "Priorité"), min_value=0, max_value=100, format="%d / 100",
-                help=t("prio_help", g=wn["gravite"], c=wn["confiance"], r=wn["recurrence"])))
+    # ---- lignes (statuts, anneau, camemberts, « Tout »)
+    if indices:
+        sel = df.loc[sorted(set.intersection(*indices))].sort_values(["Priorité", "Matricule"], ascending=[ordre == "asc", True])
+        st.markdown(f"**{t('rows_of', n=len(sel), l=' · '.join(parties))}**")
+        if st.session_state.get("pick_row") not in sel.index:
+            st.session_state.pop("pick_row", None)
+        editor(sel[COLS + ["Règle", "Explication"]], "ed_sel", highlight=st.session_state.get("pick_row"), Priorité=prio_col())
+        export, export_nom = sel[COLS + ["Règle", "Explication"]], "lignes_selectionnees"
 
+        if len(sel):
             st.subheader(t("why"))
-            if len(err):
-                if st.session_state.get("pick_row") not in err.index:
-                    st.session_state.pop("pick_row", None)
-                i = st.selectbox(t("pick"), err.index, key="pick_row", format_func=lambda i:
-                                 t("row", m=err.Matricule[i], c=err.Champ[i], p=err.Priorité[i]))
-                r = df.loc[i]
-                a, b = st.columns(2)
-                a.metric(t("val_a"), r.ValeurSourceA)
-                b.metric(t("val_b"), r.ValeurDestB)
-                vk = vkey(r)
-                est_fait = is_ok(r)
-                if st.checkbox(t("mark"), value=est_fait, key=f"chk_{i}_{est_fait}") != est_fait:
-                    vstate[vk] = not est_fait
-                    st.session_state.edit_v = st.session_state.get("edit_v", 0) + 1
-                    st.rerun()
-                st.markdown(t("verdict_line", d=dot(r.Statut), l=LABEL[r.Statut],
-                              o=TR[lang]["src"].get(r.Source_verdict, r.Source_verdict), c=r.Confiance))
-                st.markdown(t("rule_line", x=r.Règle))
-                st.markdown(t("expl_line", x=r.Explication))
-                key = f"llm_{model}_{i}"
-                if key not in st.session_state:
-                    st.session_state[key] = llm.cached(r, model)
-                if st.button(t("btn_llm", m=model), disabled=not llm_ok, help=t("btn_llm_h")):
-                    with st.spinner(t("llm_spin")):
-                        st.session_state[key] = llm.explain_row(r, model, device if gpus else "auto")
-                    if st.session_state[key] is None:
-                        st.warning(t("llm_none"))
-                if st.session_state.get(key):
-                    st.success(t("llm_expl", m=model, x=st.session_state[key]))
-                if r.Cause_probable:
-                    st.markdown(t("cause", x=r.Cause_probable))
-                with st.expander(t("all_checks")):
-                    show(df[df.Matricule == r.Matricule][["Champ", "ValeurSourceA", "ValeurDestB", "Statut"]])
-                st.markdown(t("expert"))
-                v = st.radio(t("correct"), ["ECART_JUSTIFIE", "ERREUR"], horizontal=True,
-                             format_func=LABEL.get, index=0 if r.Statut == "ERREUR" else 1)
-                if st.button(t("save_corr")):
-                    with open(ia.BASE / "corrections.csv", "a", encoding="utf-8") as f:
-                        f.write(f"{r.Matricule},{r.Champ},{v}\n")
-                    vstate[vk] = True
-                    st.session_state.ver += 1
-                    st.rerun()
+            i = st.selectbox(t("pick"), sel.index, key="pick_row", format_func=lambda i:
+                             t("row", m=sel.Matricule[i], c=sel.Champ[i], p=sel.Priorité[i]))
+            r = df.loc[i]
+            a, b = st.columns(2)
+            a.metric(t("val_a"), r.ValeurSourceA)
+            b.metric(t("val_b"), r.ValeurDestB)
+            vk = vkey(r)
+            est_fait = is_ok(r)
+            if st.checkbox(t("mark"), value=est_fait, key=f"chk_{i}_{est_fait}") != est_fait:
+                vstate[vk] = not est_fait
+                st.session_state.edit_v = st.session_state.get("edit_v", 0) + 1
+                st.rerun()
+            st.markdown(t("verdict_line", d=dot(r.Statut), l=LABEL[r.Statut],
+                          o=TR[lang]["src"].get(r.Source_verdict, r.Source_verdict), c=r.Confiance))
+            st.markdown(t("rule_line", x=r.Règle))
+            st.markdown(t("expl_line", x=r.Explication))
+            key = f"llm_{model}_{i}"
+            if key not in st.session_state:
+                st.session_state[key] = llm.cached(r, model)
+            if st.button(t("btn_llm", m=model), disabled=not llm_ok, help=t("btn_llm_h")):
+                with st.spinner(t("llm_spin")):
+                    st.session_state[key] = llm.explain_row(r, model, device if gpus else "auto")
+                if st.session_state[key] is None:
+                    st.warning(t("llm_none"))
+            if st.session_state.get(key):
+                st.success(t("llm_expl", m=model, x=st.session_state[key]))
+            if r.Cause_probable:
+                st.markdown(t("cause", x=r.Cause_probable))
+            with st.expander(t("all_checks")):
+                show(df[df.Matricule == r.Matricule][["Champ", "ValeurSourceA", "ValeurDestB", "Statut"]])
+            st.markdown(t("expert"))
+            v = st.radio(t("correct"), ["ECART_JUSTIFIE", "ERREUR"], horizontal=True,
+                         format_func=LABEL.get, index=0 if r.Statut == "ERREUR" else 1)
+            if st.button(t("save_corr")):
+                with open(ia.BASE / "corrections.csv", "a", encoding="utf-8") as f:
+                    f.write(f"{r.Matricule},{r.Champ},{v}\n")
+                vstate[vk] = True
+                st.session_state.ver += 1
+                st.rerun()
 
-    with tab2:
-        just = df[df.StatutInit == "ECART_JUSTIFIE"].sort_values("Confiance", kind="stable")
-        st.caption(t("just_cap"))
-        editor(just[COLS[1:6] + ["Source_verdict", "Confiance", "Règle", "Explication"]], "ed_just",
-               highlight=st.session_state.get("hl_just"))
-
-    with tab3:
+    # ---- Par champ
+    if "V_FIELD" in pastilles:
+        st.subheader(t("v_field"))
         res = (df.groupby(["Champ", "Statut"]).size().unstack(fill_value=0)
                  .reindex(columns=ORDER, fill_value=0).rename(columns=LABEL))
         st.bar_chart(res, color=[HEX[s] for s in ORDER], horizontal=True)
         st.dataframe(res, width="stretch")
+        if export is None:
+            export, export_nom = res.reset_index(), "par_champ"
 
-    with tab4:
-        show(df.drop(columns="StatutInit"))
-
-    with tab5:
+    # ---- Glossaire (champs + codes)
+    if "V_GLOSS" in pastilles:
+        st.subheader(t("v_gloss"))
         st.caption(t("gloss_cap"))
-        st.dataframe(corroboria.glossary_fields(), width="stretch", hide_index=True)
-        st.subheader(t("codes"))
-        st.dataframe(pd.DataFrame(corroboria.GLOSSARY_CODES, columns=[t("code"), t("meaning")]),
-                     width="stretch", hide_index=True)
+        champs_gl = corroboria.glossary_fields()
+        st.markdown(f"**{t('gloss_fields')}**")
+        st.dataframe(champs_gl, width="stretch", hide_index=True)
+        st.markdown(f"**{t('codes')}**")
+        codes_gl = pd.DataFrame(corroboria.GLOSSARY_CODES, columns=[t("code"), t("meaning")])
+        st.dataframe(codes_gl, width="stretch", hide_index=True)
+        if export is None:
+            export, export_nom = champs_gl, "glossaire_champs"
 
-    with tab6:
-        st.subheader(t("set_title"))
-        st.caption(t("set_intro"))
-
+    # ---- Paramètres
+    if "V_SET" in pastilles:
         def reset_settings():
             for k, v in W_DEF.items():
                 st.session_state[f"w_{k}"] = v
             st.session_state.sev = {}
+            st.session_state.relire_anom = False
 
+        st.subheader(t("rev_title"))
+        st.radio(t("rev_opt"), [False, True], horizontal=True, key="relire_anom", help=t("rev_help"),
+                 format_func=lambda v: t("yes") if v else t("no"))
+
+        st.subheader(t("set_title"))
+        st.caption(t("set_intro"))
         sc = st.columns(3)
         for col, k in zip(sc, W_DEF):
-            col.slider(t(f"w_{k}"), 0, 100, W_DEF[k], 5, format="%d %%", key=f"w_{k}")
+            col.slider(t(f"w_{k}"), 0, 100, step=5, format="%d %%", key=f"w_{k}")
         st.caption(t("w_norm", g=wn["gravite"], c=wn["confiance"], r=wn["recurrence"]))
 
         st.subheader(t("sev_title"))
@@ -683,3 +727,9 @@ with st.container(border=True):
             st.session_state.sev_v = st.session_state.get("sev_v", 0) + 1
 
         st.button(t("reset"), on_click=reset_and_refresh)
+        if export is None:
+            export, export_nom = base, "gravite_par_variable"
+
+    # ---- un seul bouton : le tableau actuellement affiché
+    if export is not None:
+        bouton.download_button(t("dl_cur"), csv_bytes(export), f"{export_nom}.csv", "text/csv")
