@@ -13,6 +13,8 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 
+import retours
+
 BASE = Path(__file__).parent
 OK, JUSTIFIE, ERREUR, REVUE = "OK", "ECART_JUSTIFIE", "ERREUR", "A_REVUE_HUMAINE"
 LOW, HIGH = 0.35, 0.65  # zone d'incertitude -> revue humaine
@@ -137,18 +139,16 @@ def synthetic(n=400, seed=0):
 
 
 def load_corrections():
-    p = BASE / "corrections.csv"
-    if p.exists() and p.stat().st_size > 0:
-        return pd.read_csv(p, dtype={"Matricule": str})
-    return pd.DataFrame(columns=["Matricule", "Champ", "Verdict"])
+    """Corrections d'expert effectives (dernière par ligne, annulations retirées) : voir retours.py."""
+    return retours.corrections_effectives()[["Matricule", "Champ", "Verdict"]]
 
 
-def train(df, X_all):
+def train(df, X_all, corr=None):
     """Entraîne sur les verdicts déterministes sûrs + cas synthétiques + corrections d'expert."""
     sure = df[(df.Nature == "règle") & df.Statut.isin([JUSTIFIE, ERREUR])]
     real = X_all.loc[sure.index].assign(y=sure.Statut)
     parts = [real, synthetic()]
-    corr = load_corrections()
+    corr = load_corrections() if corr is None else corr
     if len(corr):
         m = df.assign(Matricule=df.Matricule.astype(str)).merge(corr, on=["Matricule", "Champ"], how="inner")
         for i in m.index:
@@ -173,7 +173,8 @@ def explain(clf, x, p_err):
 
 
 # ---------------------------------------------------------------- pipeline
-def enrich(df):
+def enrich(df, retours_actifs=True):
+    """Verdicts enrichis. retours_actifs=False ignore les corrections d'expert et les règles apprises (pour mesurer leur effet)."""
     df = df.copy().reset_index(drop=True)
     df[["ValeurSourceA", "ValeurDestB"]] = df[["ValeurSourceA", "ValeurDestB"]].astype(str)
     df["RefAlt"] = df.RefAlt.map(lambda v: None if pd.isna(v) else str(v))
@@ -187,7 +188,8 @@ def enrich(df):
                                 stable.get((r.Champ, r.ValeurSourceA), False),
                                 r.RefAlt) for r in gap.itertuples()],
                          index=gap.index)
-    clf = train(df, X_all)
+    corr = load_corrections() if retours_actifs else pd.DataFrame(columns=["Matricule", "Champ", "Verdict"])
+    clf = train(df, X_all, corr)
 
     # IA sur les cas ambigus
     amb = df[(df.Nature == "heuristique") & (df.Statut != OK)].index
@@ -199,8 +201,9 @@ def enrich(df):
         df.at[i, "Confiance"] = round(max(p_err, 1 - p_err), 2)
         df.at[i, "Explication"] = f"[règle initiale : {old}] {df.at[i,'Explication']} | {expl}"
 
-    # corrections d'expert : priment sur tout
-    corr = load_corrections()
+    # règles apprises (validées par un expert), puis corrections d'expert qui priment sur tout
+    if retours_actifs:
+        retours.appliquer_regles(df)
     for r in corr.itertuples():
         m = (df.Matricule.astype(str) == str(r.Matricule)) & (df.Champ == r.Champ)
         df.loc[m, ["Statut", "Source_verdict", "Confiance"]] = [r.Verdict, "expert", 1.0]
@@ -221,3 +224,12 @@ def enrich(df):
     df["Priorité"] = priorite(df)
 
     return df
+
+
+def effet_retours(df_brut):
+    """Mesure ce que les retours d'experts changent : verdicts avec et sans corrections / règles apprises."""
+    avec, sans = enrich(df_brut), enrich(df_brut, retours_actifs=False)
+    chg = avec.Statut != sans.Statut
+    origine = avec.Source_verdict
+    return {"corriges_par_expert": int((origine == "expert").sum()), "changes_par_regles_apprises": int((chg & (origine == "règle apprise")).sum()),
+            "changes_par_le_modele": int((chg & ~origine.isin(["expert", "règle apprise"])).sum()), "total_changes": int(chg.sum())}

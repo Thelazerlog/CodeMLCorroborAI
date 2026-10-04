@@ -7,6 +7,7 @@ l'explication par gabarit. Aucune donnée ne quitte la machine (localhost unique
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -21,20 +22,115 @@ MODEL = os.environ.get("CORROBORIA_MODEL", "qwen2.5:3b")  # modèle par défaut
 PROFILES = [("Équilibré", "qwen2.5:3b", "profil actuel, environ 20 à 30 s par explication sans GPU"),
             ("Rapide", "qwen2.5:1.5b", "environ 2 fois plus rapide, français moins soigné"),
             ("Précis", "qwen2.5:7b", "meilleure qualité, environ 2 à 3 fois plus lent")]
-TIMEOUT = 90
+TIMEOUT = 150
 
 SYSTEM = (
-    "Tu rédiges la justification d'un écart de données entre le système A (RH, source de vérité) et le "
-    "système B (Temps, cible). Le verdict est DÉJÀ décidé : ne le commente pas et ne dis jamais qu'il est "
-    "« raisonnable ». Écris EXACTEMENT 2 phrases en français :\n"
-    "1) Le constat : « Pour <champ>, le système A a <valeur A> mais le système B contient <valeur B>. » "
-    "puis, en une demi-phrase, ce que dit la règle appliquée.\n"
-    "2) Une action concrète : commence par « À vérifier : » puis UNE seule vérification précise, déduite "
-    "de la règle ou de la cause probable fournies.\n"
-    "Interdits : le mot « propagation », les généralités, toute valeur, règle ou cause absente des faits fournis.\n"
-    "Exemple de FORME (autre champ, ne pas recopier) : « Pour weeklyHoursOverride, le système A a 35 mais le "
-    "système B contient 40 ; la règle reprend les heures de la norme du poste. À vérifier : si la valeur 40 est "
-    "une valeur par défaut appliquée à tous les postes dans le système B. »")
+    "Tu aides une personne non technique à comprendre un écart entre deux systèmes : A (RH, source de vérité) et "
+    "B (Temps, cible). Le verdict est DÉJÀ décidé : ne le remets pas en cause. Tu disposes d'une FICHE DU CHAMP "
+    "(explications officielles), de la LECTURE des valeurs et de l'analyse du moteur. Appuie-toi UNIQUEMENT sur ces éléments.\n"
+    "Écris 3 phrases courtes, en français simple, sans jargon (jamais de nom de colonne sans l'expliquer) :\n"
+    "1) « Ce que c'est : » ce que représente le champ, en mots courants, d'après la fiche.\n"
+    "2) « Ce qu'on voit : » ce que contient chaque système (nomme les deux valeurs, en traduisant les codes d'après "
+    "la lecture) et POURQUOI ils diffèrent, en reprenant l'analyse du moteur et la cause probable.\n"
+    "3) « À vérifier : » UNE vérification concrète (quelle donnée regarder, dans quel système), cohérente avec la "
+    "règle et la cause probable.\n"
+    "N'invente aucune règle, aucun code, aucune valeur, aucun numéro absent des valeurs fournies. Si la fiche ne permet "
+    "pas de conclure, dis-le simplement. Écris UNE seule fois ces 3 phrases, puis arrête-toi.\n\n"
+    "Exemples de FORME (autres champs, à ne pas recopier) :\n"
+    "- Ce que c'est : le nombre d'heures par semaine prévu pour le poste. Ce qu'on voit : le système A indique 35 heures "
+    "alors que le système B indique 40 heures. À vérifier : dans le détail du poste, le nombre d'heures par semaine prévu, "
+    "pour savoir lequel des deux est juste.\n"
+    "- Ce que c'est : le type d'employé (permanent, occasionnel, stagiaire…). Ce qu'on voit : le système A indique "
+    "« permanent temps plein » (JWN) et le système B « occasionnel » (WHX). À vérifier : la catégorie d'emploi de cet "
+    "employé dans le système RH, puis le code attendu pour cette catégorie.")
+
+GLOSSAIRE_IA = BASE / "glossaire_ia.json"
+STATUT_FR = {"OK": "conforme", "ECART_JUSTIFIE": "écart justifié (différence expliquée)",
+             "ERREUR": "vraie anomalie", "A_REVUE_HUMAINE": "à relire (confiance faible)"}
+
+
+def _hints():
+    try:
+        return json.loads(GLOSSAIRE_IA.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _glossaire():
+    """Glossaire du mapping (Mapping.xlsx) et codes ; vides si les fichiers sont absents."""
+    try:
+        import corroboria
+        return corroboria.glossary_fields(), dict(corroboria.GLOSSARY_CODES)
+    except Exception:
+        return None, {}
+
+
+def _base(champ):
+    return re.sub(r"\s*\(.*\)$", "", str(champ)).strip()  # « detailedStatus (encodage) » -> « detailedStatus »
+
+
+def fiche(champ):
+    """Fiche du champ : description, colonne du système A, règle du mapping et explication en langage courant."""
+    base = _base(champ)
+    g, _ = _glossaire()
+    lignes = []
+    if g is not None:
+        m = g[g["Champ système B"].astype(str).str.contains(re.escape(base), regex=True)]
+        for _, r in m.iterrows():
+            desc = "" if str(r["Description"]) in ("nan", "") else f" = « {r['Description']} »"
+            col = "" if str(r["Champ système A"]) in ("-", "nan") else f" (colonne « {r['Champ système A']} » du système A)"
+            regle = str(r["Règle"])
+            if len(regle) > 300:
+                regle = regle[:300].rsplit(" ", 1)[0] + " […]"
+            lignes.append(f"- Champ {base}{desc}{col}. Règle du mapping : {regle}")
+    h = _hints().get(base)
+    if h:
+        lignes.append(f"- Pour comprendre : {h}")
+    if not lignes:
+        lignes.append(f"- Champ {base} : aucune fiche disponible, reste prudent.")
+    return "\n".join(lignes)
+
+
+def lecture(champ, valeur):
+    """Traduction d'une valeur brute en mots (code connu, numéro-description, courriel)."""
+    v = str(valeur).strip()
+    base = _base(champ)
+    _, codes = _glossaire()
+    if v in codes:
+        return f"{v} = {codes[v]}"
+    if base in ("positionName", "divisionName") and "-" in v:
+        num, desc = v.split("-", 1)
+        return f"{v} = numéro {num}, description « {desc} »"
+    if base == "contactEmail" and "@" in v:
+        loc = v.split("@")[0]
+        m = re.match(r"^(dev-\d+-v\d+_)(.*)$", loc)
+        if m:
+            return f"{v} = adresse d'un environnement de développement (préfixe « {m.group(1)} »), identifiant « {m.group(2)} »"
+        return f"{v} = identifiant « {loc} »"
+    return v
+
+
+def codes_ligne(row):
+    """Codes qui apparaissent dans la ligne, avec leur signification."""
+    _, codes = _glossaire()
+    vus = [c for c in (str(row["ValeurSourceA"]).strip(), str(row["ValeurDestB"]).strip()) if c in codes]
+    return "; ".join(f"{c} = {codes[c]}" for c in dict.fromkeys(vus))
+
+
+OPTIONS = {"temperature": 0, "num_predict": 200, "repeat_penalty": 1.2}
+
+
+def nettoyer(texte):
+    """Garde la première réponse si le petit modèle se répète, et une seule vérification « À vérifier »."""
+    if not texte:
+        return texte
+    t = texte.strip().lstrip("-•* ").strip()
+    blocs = re.split(r"(?=Ce que c'est\s*:)", t)
+    t = next((b for b in blocs if b.strip()), t).strip()
+    parts = re.split(r"(?=À vérifier\s*:)", t)
+    if len(parts) > 2:
+        t = (parts[0] + parts[1]).strip()
+    return re.sub(r"\n\s*[-•*]\s*", "\n", t).strip()
 
 
 def installed_models():
@@ -88,12 +184,28 @@ def _load():
         return {}
 
 
+def _analyse(row):
+    """Analyse du moteur sans le jargon du modèle IA (facteurs, probabilités) ni le préfixe technique."""
+    a = re.sub(r"^\[règle initiale : [^\]]*\]\s*", "", str(row["Explication"]))
+    return a.split(" | IA :")[0].strip()
+
+
+def _cause(row):
+    c = str(row.get("Cause_probable") or "").strip()
+    return c.replace("propagation incomplète probable", "même problème sur plusieurs lignes") if c else "aucune"
+
+
 def _prompt(row):
-    return (f"Champ : {row['Champ']}\nRègle appliquée : {row['Règle']}\n"
-            f"Valeur système A : {row['ValeurSourceA']}\nValeur système B : {row['ValeurDestB']}\n"
-            f"Verdict : {row['Statut']} (origine : {row['Source_verdict']}, confiance {row['Confiance']:.0%})\n"
-            f"Analyse automatique : {row['Explication']}\n"
-            f"Cause probable : {row.get('Cause_probable') or 'aucune'}")
+    champ = row["Champ"]
+    cod = codes_ligne(row)
+    return (f"FICHE DU CHAMP\n{fiche(champ)}\n" + (f"Codes de la ligne : {cod}\n" if cod else "")
+            + f"\nLECTURE DES VALEURS\n- Système A : {lecture(champ, row['ValeurSourceA'])}\n"
+            f"- Système B : {lecture(champ, row['ValeurDestB'])}\n\n"
+            f"VERDICT DÉJÀ DÉCIDÉ : {STATUT_FR.get(row['Statut'], row['Statut'])} "
+            f"(origine : {row['Source_verdict']}, confiance {row['Confiance']:.0%})\n"
+            f"Règle appliquée par le moteur : {row['Règle']}\n"
+            f"Analyse du moteur : {_analyse(row)}\n"
+            f"Cause probable : {_cause(row)}")
 
 
 def explain_row(row, model=None, device="auto"):
@@ -109,11 +221,11 @@ def explain_row(row, model=None, device="auto"):
     try:
         req = urllib.request.Request(
             f"{HOST}/api/chat", method="POST", headers={"Content-Type": "application/json"},
-            data=json.dumps({"model": model, "stream": False, "options": {"temperature": 0, "num_predict": 110, **({"num_gpu": 0} if device == "cpu" else {})},
+            data=json.dumps({"model": model, "stream": False, "options": {**OPTIONS, **({"num_gpu": 0} if device == "cpu" else {})},
                              "messages": [{"role": "system", "content": SYSTEM},
                                           {"role": "user", "content": prompt}]}).encode("utf-8"))
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-            text = json.load(r)["message"]["content"].strip()
+            text = nettoyer(json.load(r)["message"]["content"])
     except Exception:
         return None
     cache[key] = text

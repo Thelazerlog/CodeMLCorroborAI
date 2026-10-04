@@ -12,6 +12,7 @@ import pytest
 import corroboria as c
 import ia
 import llm
+import retours
 
 BASE = Path(__file__).parent.parent
 DATA = BASE / "data"
@@ -159,7 +160,8 @@ def test_correction_expert(tmp_path, monkeypatch):
     p = make(tmp_path, [base_row()], [lambda d: d.__setitem__("contractTypeCode", "XFLR")])
     (tmp_path / "corrections.csv").write_text("Matricule,Champ,Verdict\n9989151,contractTypeCode,ECART_JUSTIFIE\n",
                                               encoding="utf-8")
-    monkeypatch.setattr(ia, "BASE", tmp_path)
+    monkeypatch.setattr(retours, "JOURNAL", tmp_path / "corrections.csv")  # ancien format à 3 colonnes, toujours lu
+    monkeypatch.setattr(retours, "REGLES", tmp_path / "regles_apprises.json")
     r = get(ia.enrich(c.run(p)), "contractTypeCode")
     assert r.Statut == c.JUSTIFIE and r.Source_verdict == "expert"
 
@@ -198,9 +200,36 @@ def test_llm_a_la_demande_et_cache(tmp_path, monkeypatch):
     assert llm.explain_row(ROW) == llm.cached(ROW) and len(calls) == 1  # 2e fois : cache, pas d'appel
 
 
-def test_prompt_resserre():
-    assert "EXACTEMENT 2 phrases" in llm.SYSTEM and "propagation" in llm.SYSTEM  # interdit explicitement
+def _ligne(champ, a, b, **kw):
+    return pd.Series({"Champ": champ, "ValeurSourceA": a, "ValeurDestB": b, "Statut": "ECART_JUSTIFIE", "Source_verdict": "IA",
+                      "Confiance": 0.94, "Règle": "Concaténation", "Explication": "Libellé différent | IA : P(erreur) = 3%.",
+                      "Cause_probable": "", **kw})
+
+
+def test_prompt_structure_et_consignes():
+    assert "FICHE DU CHAMP" in llm.SYSTEM and "À vérifier" in llm.SYSTEM and "propagation" not in llm._prompt(ROW)
     assert "contractTypeCode" in llm._prompt(ROW)
+
+
+def test_fiche_glossaire_pour_positionname():
+    p = llm._prompt(_ligne("positionName", "6900-Empl6900", "5123-Empl5123"))
+    assert "Nom du rôle" in p and "IntituléEmploi" in p            # description + colonne du système A (Mapping.xlsx)
+    assert "Concaténation de Emploi" in p                          # règle du mapping
+    assert "numéro 6900, description « Empl6900 »" in p            # valeur décodée
+    assert "P(erreur)" not in p                                    # jargon du modèle IA retiré
+
+
+def test_decodage_des_codes_et_des_courriels():
+    p = llm._prompt(_ligne("contractTypeCode", "JWN", "WHX"))
+    assert "JWN = Permanent temps plein" in p and "WHX = Occasionnel" in p
+    mail = llm.lecture("contactEmail", "dev-08-v2_PNom10430430@loto-quebec.com")
+    assert "environnement de développement" in mail and "dev-08-v2_" in mail
+    assert "identifiant « PNom6035643643 »" in llm.lecture("contactEmail", "PNom6035643643@loto-quebec.com")
+
+
+def test_champ_sans_fiche_reste_prudent():
+    assert "aucune fiche" in llm.fiche("champInconnu") or "Pour comprendre" in llm.fiche("Enregistrement")
+    assert "aucune fiche" in llm.fiche("champInconnu")
 
 
 # ------------------------------------------------------------------ export + lecture seule

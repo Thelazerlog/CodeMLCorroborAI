@@ -13,6 +13,7 @@ from PIL import Image, ImageChops
 import corroboria
 import ia
 import llm
+import retours
 
 HERE = Path(__file__).parent
 ASSETS = HERE / "assets"
@@ -109,6 +110,20 @@ TR = {
         "conf_txt": "Changer le statut de **{m}** · `{c}` de « {a} » à « {b} » ? La correction est enregistrée dans corrections.csv et apprise aux prochaines exécutions.",
         "conf_bad": "Seuls « Vraie anomalie » et « Écart justifié » peuvent être choisis.", "ban_title": "Explication IA locale",
         "ban_close": "Fermer", "ban_fallback": "Explication du moteur (le LLM local n'a pas répondu) :",
+        "flt_cause": "Type d'erreur", "flt_emp": "Employé", "flt_all": "Tous", "flt_reset": "Réinitialiser les filtres", "flt_active": "Filtres actifs",
+        "v_cor": "Corrections", "motif": "Motif de la correction", "commentaire": "Commentaire (facultatif)", "auteur": "Auteur",
+        "motifs": {"artefact_anonymisation": "Artefact d'anonymisation", "donnee_source_erronee": "Donnée source erronée",
+                   "regle_trop_stricte": "Règle trop stricte", "erreur_confirmee": "Erreur confirmée", "autre": "Autre"},
+        "cor_notice": "{n} règle(s) apprise(s) proposée(s) : ouvre « Corrections » pour les valider ou les rejeter.",
+        "cor_prop": "Règles proposées", "cor_prop_none": "Aucune règle proposée : il faut {n} corrections concordantes (même champ, mêmes formes de valeurs A et B, même verdict, sans contre-exemple).",
+        "cor_prop_txt": "**{c}** : si la valeur A a la forme « {fa} » et la valeur B la forme « {fb} », alors **{v}** ({n} corrections concordantes, par exemple {ex}).",
+        "cor_valider": "Valider la règle", "cor_rejeter": "Rejeter", "cor_actives": "Règles apprises actives",
+        "cor_none_act": "Aucune règle apprise active.", "cor_desact": "Désactiver la règle {i}",
+        "cor_regle_txt": "`{i}` · **{c}** : A « {fa} » / B « {fb} » → {v} ({n} corrections, validée par {a} le {d})",
+        "cor_journal": "Journal des corrections", "cor_pick": "Correction à annuler", "cor_annuler": "Annuler la correction",
+        "cor_effet": "Effet des retours d'experts", "cor_mesurer": "Mesurer l'effet",
+        "cor_m1": "Lignes corrigées par un expert", "cor_m2": "Verdicts changés par les règles apprises",
+        "cor_m3": "Verdicts du modèle changés (entraînement)", "cor_m4": "Verdicts changés au total",
         "todo_title": "À faire", "scope": "Données à investiguer", "todo_n": "Lignes à investiguer", "todo_left": "Restantes",
         "seuil": "Seuil de confiance minimal", "seuil_help": "En dessous de ce seuil, une validation humaine est nécessaire.",
         "todo_cap": "À investiguer : toutes les erreurs et cas à revoir, plus les écarts justifiés par l'IA dont la confiance est sous le seuil.",
@@ -116,7 +131,7 @@ TR = {
         "ver_help": "À cocher quand la ligne a été vérifiée. Cochée automatiquement (cellule grise) quand la confiance atteint le seuil.",
         "mark": "Marquer comme vérifié", "opened": "Ligne ouverte dans « Investiguer les données » plus bas.", "ver_col": "Vérifié",
         "cols": {},
-        "src": {"règle": "règle", "IA": "IA", "expert": "expert"},
+        "src": {"règle": "règle", "IA": "IA", "expert": "expert", "règle apprise": "règle apprise"},
         "free_text": "",
     },
     "en": {
@@ -182,17 +197,31 @@ TR = {
         "conf_txt": "Change the status of **{m}** · `{c}` from \"{a}\" to \"{b}\"? The correction is saved in corrections.csv and learned on the next runs.",
         "conf_bad": "Only \"True anomaly\" and \"Justified gap\" can be chosen.", "ban_title": "Local AI explanation",
         "ban_close": "Close", "ban_fallback": "Engine explanation (the local LLM did not answer):",
+        "flt_cause": "Error type", "flt_emp": "Employee", "flt_all": "All", "flt_reset": "Reset filters", "flt_active": "Active filters",
+        "v_cor": "Corrections", "motif": "Reason for the correction", "commentaire": "Comment (optional)", "auteur": "Author",
+        "motifs": {"artefact_anonymisation": "Anonymisation artefact", "donnee_source_erronee": "Wrong source data",
+                   "regle_trop_stricte": "Rule too strict", "erreur_confirmee": "Confirmed error", "autre": "Other"},
+        "cor_notice": "{n} learned rule(s) proposed: open \"Corrections\" to validate or reject them.",
+        "cor_prop": "Proposed rules", "cor_prop_none": "No rule proposed: {n} concordant corrections are needed (same field, same value shapes for A and B, same verdict, no counter-example).",
+        "cor_prop_txt": "**{c}**: if value A has the shape \"{fa}\" and value B the shape \"{fb}\", then **{v}** ({n} concordant corrections, e.g. {ex}).",
+        "cor_valider": "Validate the rule", "cor_rejeter": "Reject", "cor_actives": "Active learned rules",
+        "cor_none_act": "No active learned rule.", "cor_desact": "Deactivate rule {i}",
+        "cor_regle_txt": "`{i}` · **{c}**: A \"{fa}\" / B \"{fb}\" → {v} ({n} corrections, validated by {a} on {d})",
+        "cor_journal": "Corrections journal", "cor_pick": "Correction to cancel", "cor_annuler": "Cancel the correction",
+        "cor_effet": "Effect of expert feedback", "cor_mesurer": "Measure the effect",
+        "cor_m1": "Rows corrected by an expert", "cor_m2": "Verdicts changed by learned rules",
+        "cor_m3": "Model verdicts changed (training)", "cor_m4": "Verdicts changed in total",
         "todo_title": "To do", "scope": "Data to investigate", "todo_n": "Rows to investigate", "todo_left": "Remaining",
         "seuil": "Minimum confidence threshold", "seuil_help": "Below this threshold, human validation is required.",
         "todo_cap": "To investigate: all errors and review cases, plus AI-justified gaps whose confidence is below the threshold.",
         "progress": "{d} verified out of {n}", "next_title": "First rows to check", "all_done": "Everything is verified.",
         "ver_help": "Tick once the row has been checked. Ticked automatically (grey cell) when confidence reaches the threshold.",
         "mark": "Mark as verified", "opened": "Row opened in \"Investigate the data\" below.", "ver_col": "Verified",
-        "cols": {"Vérifié": "Verified", "Priorité": "Priority", "Matricule": "Employee ID", "Champ": "Field", "ValeurSourceA": "System A value",
+        "cols": {"Vérifié": "Ok?", "Priorité": "Priority", "Matricule": "Employee ID", "Champ": "Field", "ValeurSourceA": "System A value",
                  "ValeurDestB": "System B value", "Statut": "Status", "Source_verdict": "Decided by",
                  "Confiance": "Confidence", "Cause_probable": "Probable cause", "Règle": "Rule",
                  "Explication": "Explanation", "CodeEmploi": "Job code", "TypeAffectation": "Assignment type"},
-        "src": {"règle": "rule", "IA": "AI", "expert": "expert"},
+        "src": {"règle": "rule", "IA": "AI", "expert": "expert", "règle apprise": "learned rule"},
         "free_text": "Rule, explanation and cause texts are generated in French by the engine.",
     },
 }
@@ -407,34 +436,63 @@ def is_ok(r):
 fait = pd.Series([is_ok(r) for r in a_faire.itertuples()], index=a_faire.index, dtype=bool)
 
 
-def maj_statut(i, nouveau):
-    """Applique une correction de statut confirmée : corrections.csv (relu par le moteur) puis recalcul."""
+def maj_statut(i, nouveau, motif="", commentaire="", auteur=""):
+    """Correction de statut confirmée : ajoutée au journal (retours.py), relue par le moteur, puis recalcul."""
     r = df.loc[i]
-    with open(ia.BASE / "corrections.csv", "a", encoding="utf-8") as f:
-        f.write(f"{r.Matricule},{r.Champ},{nouveau}\n")
+    retours.ajouter(r.Matricule, r.Champ, nouveau, motif=motif, commentaire=commentaire, auteur=auteur,
+                    valeur_a=r.ValeurSourceA, valeur_b=r.ValeurDestB, regle=r.Règle, ancien=r.Statut)
     vstate[vkey(r)] = True
     st.session_state.ver += 1
 
 
+def reset_filtres():
+    """Efface les filtres des listes déroulantes et la sélection faite en cliquant sur les camemberts."""
+    st.session_state.flt_cause = None
+    st.session_state.flt_emp = None
+    st.session_state.pie_v = st.session_state.get("pie_v", 0) + 1
+
+
 def annuler_statut():
     st.session_state.pop("statut_pending", None)
+    st.session_state.dlg_n = st.session_state.get("dlg_n", 0) + 1
 
 
 @st.dialog(t("conf_title"), on_dismiss=annuler_statut)
 def confirmer_statut(i, nouveau):
     r = df.loc[i]
+    n = st.session_state.get("dlg_n", 0)
     st.markdown(t("conf_txt", m=r.Matricule, c=r.Champ, a=LABEL[r.Statut], b=LABEL.get(nouveau, nouveau)))
     valide = nouveau in ("ERREUR", "ECART_JUSTIFIE")
     if not valide:
         st.warning(t("conf_bad"))
+    motif = st.selectbox(t("motif"), retours.MOTIFS, format_func=lambda m: TR[lang]["motifs"][m], key=f"dlg_motif_{n}")
+    commentaire = st.text_area(t("commentaire"), key=f"dlg_comm_{n}", height=70)
+    auteur = st.text_input(t("auteur"), value=st.session_state.get("auteur", ""), key=f"dlg_auteur_{n}")
     c1, c2 = st.columns(2)
     if c1.button(t("conf_ok"), type="primary", disabled=not valide, width="stretch"):
-        maj_statut(i, nouveau)
+        st.session_state.auteur = auteur
+        maj_statut(i, nouveau, motif, commentaire, auteur)
         annuler_statut()
         st.rerun()
     if c2.button(t("conf_no"), width="stretch"):
         annuler_statut()
         st.rerun()
+
+
+def cb_regle(action, prop):
+    getattr(retours, action)(prop, st.session_state.get("auteur", ""))
+    st.session_state.ver += 1
+
+
+def cb_desactiver(id_regle):
+    retours.desactiver(id_regle, st.session_state.get("auteur", ""))
+    st.session_state.ver += 1
+
+
+def cb_annuler_correction(cle):
+    m, c = cle.split("|", 1)
+    retours.annuler(m, c, st.session_state.get("auteur", ""))
+    st.session_state.ver += 1
 
 
 # ---------- tableau « Données sélectionnées » : composant HTML (cloche en image à gauche, statut coloré + crayon)
@@ -460,16 +518,17 @@ td.statut .cell{display:flex;align-items:center;justify-content:space-between;ga
 td.statut img{width:15px;height:15px;opacity:.85}
 td.statut select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
 td.statut:hover{background:rgba(128,128,128,.18)}
+td.long{max-width:300px;overflow:hidden;text-overflow:ellipsis}
 """
 TABLEAU_JS = """
 export default function(component) {
   const { data, setTriggerValue, parentElement } = component;
   const old = parentElement.querySelector('.corro'); if (old) old.remove();
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const T = data.t, I = data.icons;
+  const T = data.t, I = data.icons, S = data.show;
   const th = (txt, cls, tip) => `<th class="${cls || ''}" ${tip ? `title="${esc(tip)}"` : ''}>${esc(txt)}</th>`;
   const head = '<tr>' + th('', 'bell', T.aide_help) + th(T.verifie, 'ver', T.ver_help) + th(T.prio) + th(T.matricule) + th(T.champ)
-    + th(T.va) + th(T.vb) + th(T.statut, '', T.statut_help) + th(T.source) + th(T.conf) + '</tr>';
+    + th(T.va) + th(T.vb) + th(T.statut, '', T.statut_help) + th(T.source) + th(T.conf) + (S.regle ? th(T.regle) : '') + (S.cause ? th(T.cause) : '') + '</tr>';
   const body = data.rows.map(r => {
     const opts = r.options.map(o => `<option value="${esc(o[0])}" ${o[0] === r.statut ? 'selected' : ''}>${esc(o[1])}</option>`).join('');
     return `<tr class="${r.actif ? 'actif' : ''}">`
@@ -479,7 +538,9 @@ export default function(component) {
       + `<td>${esc(r.matricule)}</td><td>${esc(r.champ)}</td><td>${esc(r.va)}</td><td>${esc(r.vb)}</td>`
       + `<td class="statut" style="color:${r.couleur}" title="${esc(T.statut_help)}"><div class="cell"><span>${esc(r.label)}</span>`
       + `<img src="${I.crayon}" alt=""/></div><select data-id="${r.id}" data-orig="${esc(r.statut)}">${opts}</select></td>`
-      + `<td>${esc(r.source)}</td><td>${esc(r.conf)}</td></tr>`;
+      + `<td>${esc(r.source)}</td><td>${esc(r.conf)}</td>`
+      + (S.regle ? `<td class="long" title="${esc(r.regle)}">${esc(r.regle)}</td>` : '')
+      + (S.cause ? `<td class="long" title="${esc(r.cause)}">${esc(r.cause)}</td>` : '') + '</tr>';
   }).join('');
   const box = document.createElement('div'); box.className = 'corro';
   box.innerHTML = `<div class="wrap"><table><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
@@ -540,16 +601,19 @@ def tableau_lignes(d, actif):
                        "auto": bool(auto_ok(r) and vkey(r) not in vstate), "prio": int(r.Priorité),
                        "matricule": str(r.Matricule), "champ": r.Champ, "va": str(r.ValeurSourceA), "vb": str(r.ValeurDestB),
                        "statut": r.Statut, "label": LABEL[r.Statut], "couleur": HEX[r.Statut], "options": valides,
-                       "source": TR[lang]["src"].get(r.Source_verdict, r.Source_verdict), "conf": f"{float(r.Confiance):.0%}"})
-    data = {"rows": lignes,
+                       "source": TR[lang]["src"].get(r.Source_verdict, r.Source_verdict), "conf": f"{float(r.Confiance):.0%}",
+                       "regle": str(r.Règle), "cause": str(r.Cause_probable or "")})
+    vide = lambda c: all(str(x[c]).strip() in ("", "nan", "None") for x in lignes)
+    data = {"rows": lignes, "show": {"regle": not vide("regle"), "cause": not vide("cause")},
             "icons": {"grise": icone("cloche_grise.png", 68, rogner=False), "violette": icone("cloche_violette_son.png", 68, rogner=False),
                       "crayon": icone_svg("pencil-square-svgrepo-com.svg")},
             "t": {"aide_help": t("aide_help"), "statut_help": t("statut_help"), "ver_help": t("ver_help"),
-                  "verifie": cols.get("Vérifié", "Vérifié"), "prio": cols.get("Priorité", "Priorité"),
+                  "verifie": cols.get("Vérifié", "Ok ?"), "prio": cols.get("Priorité", "Priorité"),
                   "matricule": cols.get("Matricule", "Matricule"), "champ": cols.get("Champ", "Champ"),
                   "va": cols.get("ValeurSourceA", "ValeurSourceA"), "vb": cols.get("ValeurDestB", "ValeurDestB"),
                   "statut": cols.get("Statut", "Statut"), "source": cols.get("Source_verdict", "Source_verdict"),
-                  "conf": cols.get("Confiance", "Confiance")}}
+                  "conf": cols.get("Confiance", "Confiance"), "regle": cols.get("Règle", "Règle"),
+                  "cause": cols.get("Cause_probable", "Cause probable")}}
     composant_tableau(hashlib.md5((TABLEAU_CSS + TABLEAU_JS).encode()).hexdigest()[:8])(data=data, key="tab_sel", on_cloche_change=cb_cloche, on_verifie_change=cb_verifie,
                         on_statut_change=cb_statut)
 
@@ -724,11 +788,11 @@ with st.container(border=True):
         st.altair_chart(histogram(), width="stretch")
     with h2c:
         st.markdown(f"**{t('cause_title')}**")
-        lab_cause = pie(cause_serie(df[df.StatutInit == valeur("pie_cause")]), "pie_cause_chart")
+        lab_cause = pie(cause_serie(df[df.StatutInit == valeur("pie_cause")]), f"pie_cause_chart_{st.session_state.get('pie_v', 0)}")
         choix("pie_cause")
     with h3c:
         st.markdown(f"**{t('emp_title')}**")
-        lab_emp = pie(df[df.StatutInit == valeur("pie_emp")].Matricule.astype(str), "pie_emp_chart")
+        lab_emp = pie(df[df.StatutInit == valeur("pie_emp")].Matricule.astype(str), f"pie_emp_chart_{st.session_state.get('pie_v', 0)}")
         choix("pie_emp")
 
 
@@ -737,9 +801,9 @@ def csv_bytes(d):  # séparateur ; et BOM UTF-8 : s'ouvre correctement dans Exce
 
 
 section(t("selected"))
-VUES = ["V_ALL", "V_FIELD", "V_GLOSS", "V_SET"]
+VUES = ["V_ALL", "V_FIELD", "V_GLOSS", "V_COR", "V_SET"]
 CHOIX = SHOWN + VUES
-NOM_VUE = {"V_ALL": "v_all", "V_FIELD": "v_field", "V_GLOSS": "v_gloss", "V_SET": "v_set"}
+NOM_VUE = {"V_COR": "v_cor", "V_ALL": "v_all", "V_FIELD": "v_field", "V_GLOSS": "v_gloss", "V_SET": "v_set"}
 with st.container(border=True):
     # un clic sur l'anneau coche la pastille du statut (et décocher la part la décoche) ; ensuite les pastilles font foi
     clic = {s for s in SHOWN if evt and LABEL[s] in [p.get(t("verdict")) for p in (evt.selection.get("part") or [])]}
@@ -751,12 +815,29 @@ with st.container(border=True):
     st.session_state.setdefault("sel_stat", ["A_REVUE_HUMAINE"])  # au départ : les lignes à relire
     pastilles = st.pills(t("pick_pills"), CHOIX, selection_mode="multi", key="sel_stat",
                          format_func=lambda v: t(NOM_VUE[v]) if v in NOM_VUE else LABEL[v]) or []
+    propositions = retours.propositions()
+    if propositions:
+        st.info(t("cor_notice", n=len(propositions)))
     col_dl, col_tri = st.columns([5, 4], vertical_alignment="bottom")
     bouton = col_dl.container()  # bouton d'export (à gauche du tri), rempli une fois le tableau affiché connu
     with col_tri:
         ordre = st.segmented_control(t("sort_lbl"), ["desc", "asc"], default="desc", key="sel_sort",
                                      format_func=lambda o: t("sort_" + o)) or "desc"
     export, export_nom = None, "tableau"
+
+    # filtres : type d'erreur (cause probable) et employé, en plus des clics sur les camemberts
+    f1, f2, f3 = st.columns([3, 2, 2], vertical_alignment="bottom")
+    causes_dispo = list(cause_serie(df[df.Statut != "OK"]).value_counts().index)
+    flt_cause = f1.selectbox(t("flt_cause"), [None] + causes_dispo, key="flt_cause",
+                             format_func=lambda v: t("flt_all") if v is None else v)
+    flt_emp = f2.selectbox(t("flt_emp"), [None] + sorted(df.Matricule.astype(str).unique()), key="flt_emp",
+                           format_func=lambda v: t("flt_all") if v is None else v)
+    actifs = ([f"{t('and_cause')} : {', '.join(lab_cause)}"] if lab_cause else []) \
+        + ([f"{t('and_emp')} : {', '.join(lab_emp)}"] if lab_emp else []) \
+        + ([f"{t('and_cause')} : {flt_cause}"] if flt_cause else []) + ([f"{t('and_emp')} : {flt_emp}"] if flt_emp else [])
+    if actifs:  # le filtre est visible tant qu'il existe, avec un bouton pour l'enlever
+        f3.button(t("flt_reset"), key="flt_reset", on_click=reset_filtres, width="stretch")
+        st.markdown(f"**{t('flt_active')}** : " + " · ".join(actifs))
     if lang == "en":
         st.caption(t("free_text"))
 
@@ -775,6 +856,13 @@ with st.container(border=True):
         et = etiquette(sub.Matricule.astype(str))
         indices.append(set(et.index[et.isin(lab_emp)]))
         parties.append(f"{t('and_emp')} : {', '.join(lab_emp)}")
+    if flt_cause is not None:
+        ce = cause_serie(df[df.Statut != "OK"])
+        indices.append(set(ce.index[ce == flt_cause]))
+        parties.append(f"{t('and_cause')} : {flt_cause}")
+    if flt_emp is not None:
+        indices.append(set(df.index[df.Matricule.astype(str) == flt_emp]))
+        parties.append(f"{t('and_emp')} : {flt_emp}")
     if not indices and not any(v in pastilles for v in VUES):
         st.caption(t("click_hint"))
 
@@ -814,6 +902,48 @@ with st.container(border=True):
         st.dataframe(codes_gl, width="stretch", hide_index=True)
         if export is None:
             export, export_nom = champs_gl, "glossaire_champs"
+
+    # ---- Corrections : règles proposées, règles apprises, journal, effet
+    if "V_COR" in pastilles:
+        st.subheader(t("v_cor"))
+        st.markdown(f"**{t('cor_prop')}**")
+        if not propositions:
+            st.caption(t("cor_prop_none", n=retours.SEUIL_REGLE))
+        for k, p in enumerate(propositions):
+            st.markdown(t("cor_prop_txt", c=p["champ"], fa=p["forme_a"], fb=p["forme_b"], v=LABEL[p["verdict"]], n=p["n"],
+                          ex=", ".join(p["exemples"])))
+            b1, b2, _ = st.columns([2, 1, 5])
+            b1.button(t("cor_valider"), key=f"val_{k}", type="primary", on_click=cb_regle, args=("valider", p))
+            b2.button(t("cor_rejeter"), key=f"rej_{k}", on_click=cb_regle, args=("rejeter", p))
+        st.markdown(f"**{t('cor_actives')}**")
+        actives = retours.regles_actives()
+        if not actives:
+            st.caption(t("cor_none_act"))
+        for r_ in actives:
+            st.markdown(t("cor_regle_txt", i=r_["id"], c=r_["champ"], fa=r_["forme_a"], fb=r_["forme_b"], v=LABEL[r_["verdict"]],
+                          n=r_["n"], a=r_["auteur"] or "?", d=r_["date"]))
+            st.button(t("cor_desact", i=r_["id"]), key=f"des_{r_['id']}", on_click=cb_desactiver, args=(r_["id"],))
+        st.markdown(f"**{t('cor_journal')}**")
+        journal = retours.lire_journal()
+        st.dataframe(journal.iloc[::-1], width="stretch", hide_index=True)
+        eff = retours.corrections_effectives()
+        if len(eff):
+            cles = [f"{m}|{c}" for m, c in zip(eff.Matricule, eff.Champ)]
+            choix_ = st.selectbox(t("cor_pick"), cles, format_func=lambda s: s.replace("|", " · "), key="cor_pick")
+            st.button(t("cor_annuler"), key="cor_annuler", on_click=cb_annuler_correction, args=(choix_,))
+        st.markdown(f"**{t('cor_effet')}**")
+        if st.button(t("cor_mesurer"), key="cor_mesurer"):
+            with st.spinner("…"):
+                st.session_state.effet = ia.effet_retours(corroboria.run(files or None))
+        if st.session_state.get("effet"):
+            e_ = st.session_state.effet
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric(t("cor_m1"), e_["corriges_par_expert"])
+            m2.metric(t("cor_m2"), e_["changes_par_regles_apprises"])
+            m3.metric(t("cor_m3"), e_["changes_par_le_modele"])
+            m4.metric(t("cor_m4"), e_["total_changes"])
+        if export is None:
+            export, export_nom = journal, "journal_corrections"
 
     # ---- Paramètres
     if "V_SET" in pastilles:
