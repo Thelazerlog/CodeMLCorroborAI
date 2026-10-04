@@ -237,7 +237,7 @@ GLOSSARY_CODES = [
     ("OK", "Valeurs conformes à la règle du mapping"),
     ("ECART_JUSTIFIE", "Valeurs différentes mais expliquées par une règle métier ou un artefact connu"),
     ("ERREUR", "Vraie anomalie à investiguer"),
-    ("A_REVUE_HUMAINE", "Cas ambigu : le modèle n'est pas assez sûr, un humain tranche"),
+    ("A_REVUE_HUMAINE", "Cas à relire : confiance sous le seuil ou modèle pas assez sûr, un humain tranche"),
     ("règle / IA / expert", "Origine du verdict : règle déterministe, modèle scikit-learn local, ou correction d'un expert"),
     ("P / A / S", "Type d'affectation : Primaire / temporAire / Secondaire"),
     ("JWN", "Permanent temps plein (PERM_IND=1, FT_IND=1, EMPTP_CD=V)"),
@@ -277,7 +277,7 @@ def report(df):
     write_sheets(df, out)
     tot = df.Statut.value_counts()
     print(f"{len(df)} contrôles : {tot.get(OK,0)} OK, {tot.get(JUSTIFIE,0)} écarts justifiés, "
-          f"{tot.get(ERREUR,0)} erreurs à investiguer, {tot.get('A_REVUE_HUMAINE',0)} à revue humaine")
+          f"{tot.get(ERREUR,0)} erreurs à investiguer, {tot.get('A_REVUE_HUMAINE',0)} à relire")
     print(df[df.Statut == ERREUR].sort_values("Priorité", ascending=False)[
         ["Priorité", "Matricule", "Champ", "ValeurSourceA", "ValeurDestB", "Source_verdict", "Cause_probable"]
     ].to_string(index=False))
@@ -290,7 +290,7 @@ def write_sheets(df, out):
     revue = df[df.Statut == "A_REVUE_HUMAINE"].sort_values("Priorité", ascending=False)
     with pd.ExcelWriter(out) as xw:
         erreurs.to_excel(xw, sheet_name="Erreurs à investiguer", index=False)
-        revue.to_excel(xw, sheet_name="À revue humaine", index=False)
+        revue.to_excel(xw, sheet_name="À relire", index=False)
         df[df.Statut == JUSTIFIE].to_excel(xw, sheet_name="Écarts justifiés", index=False)
         resume.to_excel(xw, sheet_name="Résumé par champ")
         df.to_excel(xw, sheet_name="Détail complet", index=False)

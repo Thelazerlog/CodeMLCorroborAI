@@ -46,7 +46,7 @@ st.set_page_config(page_title="CorroborIA", page_icon=trimmed(LOGO) if LOGO else
 # ------------------------------------------------------------------ langue (fr / en)
 TR = {
     "fr": {
-        "Conforme": "Conforme", "ECART_JUSTIFIE": "Écart justifié", "ERREUR": "Vraie anomalie", "A_REVUE_HUMAINE": "À revue humaine",
+        "Conforme": "Conforme", "ECART_JUSTIFIE": "Écart justifié", "ERREUR": "Vraie anomalie", "A_REVUE_HUMAINE": "À relire",
         "data": "Données", "data_cap": "Par défaut, les fichiers fournis dans le dossier sont utilisés. Les fichiers sont lus en lecture seule.",
         "up_source": "Système A – RH (source)", "up_dest": "Système B – Temps (cible)", "up_detail": "Détail du poste",
         "up_motif": "Motif de la situation d'emploi", "run": "Lancer la corroboration",
@@ -61,7 +61,7 @@ TR = {
         "dashboard": "Tableau de bord", "investigate": "Investiguer les données",
         "verdict": "Verdict", "count": "Nombre", "share": "Part", "checks": "contrôles",
         "k_compl": "Conformité", "k_compl_h": "Part des contrôles conformes à la règle du mapping.",
-        "k_inv": "À investiguer", "k_inv_h": "Erreurs confirmées et cas à revoir par un humain.",
+        "k_inv": "À investiguer", "k_inv_h": "Vraies anomalies et cas à relire par un humain.",
         "k_emp": "Employés", "k_emp_h": "Employés analysés.",
         "k_conc": "Concernés", "k_conc_h": "Employés ayant au moins une erreur ou un cas à revoir.",
         "no_err": "Aucune erreur à investiguer.",
@@ -106,7 +106,7 @@ TR = {
         "free_text": "",
     },
     "en": {
-        "Conforme": "Compliant", "ECART_JUSTIFIE": "Justified gap", "ERREUR": "True anomaly", "A_REVUE_HUMAINE": "Needs human review",
+        "Conforme": "Compliant", "ECART_JUSTIFIE": "Justified gap", "ERREUR": "True anomaly", "A_REVUE_HUMAINE": "To review",
         "data": "Data", "data_cap": "By default, the files provided in the folder are used. Files are read-only.",
         "up_source": "System A – HR (source)", "up_dest": "System B – Time (target)", "up_detail": "Position detail",
         "up_motif": "Employment status reason", "run": "Run the corroboration",
@@ -121,7 +121,7 @@ TR = {
         "dashboard": "Dashboard", "investigate": "Investigate the data",
         "verdict": "Verdict", "count": "Count", "share": "Share", "checks": "checks",
         "k_compl": "Compliance", "k_compl_h": "Share of checks compliant with the mapping rule.",
-        "k_inv": "To investigate", "k_inv_h": "Confirmed errors and cases for human review.",
+        "k_inv": "To investigate", "k_inv_h": "Confirmed anomalies and cases to review.",
         "k_emp": "Employees", "k_emp_h": "Employees analysed.",
         "k_conc": "Affected", "k_conc_h": "Employees with at least one error or case to review.",
         "no_err": "No error to investigate.",
@@ -252,7 +252,7 @@ with st.sidebar:
     st.subheader(t("llm"))
     present = llm.installed_models()
     labels = {m: f"{name} ({m})" + ("" if m in present else t("not_installed")) for name, m, _ in llm.PROFILES}
-    model = st.selectbox(t("llm_model"), [m for _, m, _ in llm.PROFILES], format_func=labels.get, help=t("llm_help"))
+    model = st.radio(t("llm_model"), [m for _, m, _ in llm.PROFILES], format_func=labels.get, help=t("llm_help"))  # boutons : pas de saisie libre
     llm_ok = model in present
     gpus = gpu_list()
     st.caption(t("gpu_found", g=" ; ".join(gpus)) if gpus else t("gpu_none"))
@@ -325,12 +325,14 @@ except Exception as e:
 W_DEF = {k: int(round(v * 100)) for k, v in ia.WEIGHTS.items()}
 weights = {k: st.session_state.get(f"w_{k}", W_DEF[k]) / 100 for k in W_DEF}
 sev_user = st.session_state.get("sev", {})
+seuil = st.session_state.get("seuil", 95) / 100
+df = df.assign(StatutInit=df.Statut)  # verdict d'origine, avant application du seuil
+df.loc[(df.Statut != "OK") & (df.Confiance.astype(float) < seuil), "Statut"] = "A_REVUE_HUMAINE"
 df = df.assign(Priorité=ia.priorite(df, weights, sev_user))
 wsum = sum(weights.values()) or 1.0
 wn = {k: v / wsum for k, v in weights.items()}
 
 # lignes à faire : erreurs / revue + écarts justifiés par l'IA dont la confiance est sous le seuil réglable
-seuil = st.session_state.get("seuil", 95) / 100
 vstate = st.session_state.setdefault("vstate", {})  # clé de ligne -> vérifié (True/False) choisi à la main
 
 
@@ -339,9 +341,8 @@ def vkey(r):
 
 
 scope = st.session_state.get("scope", ["ERREUR", "ECART_JUSTIFIE"])  # catégories choisies dans « À faire »
-a_faire = df[(df.Statut.isin(["ERREUR", "A_REVUE_HUMAINE"]) & ("ERREUR" in scope))
-             | ((df.Statut == "ECART_JUSTIFIE") & (df.Source_verdict == "IA") & (df.Confiance.astype(float) < seuil)
-                & ("ECART_JUSTIFIE" in scope))]
+a_faire = df[df.Statut.isin(["ERREUR", "A_REVUE_HUMAINE"])
+             & (df.StatutInit.isin(scope) | (df.StatutInit == "A_REVUE_HUMAINE"))]
 a_faire = a_faire.sort_values(["Priorité", "Confiance"], ascending=[False, True])
 
 
@@ -424,6 +425,7 @@ with st.container(border=True):
                 f'<span>{LABEL[s]} <b>{n[s]}</b></span></div>' for s in ORDER)
             st.markdown(f'<div style="display:flex;flex-direction:column;justify-content:center">{rows}</div>',
                         unsafe_allow_html=True)
+        st.slider(t("seuil"), 50, 100, 95, 1, format="%d %%", key="seuil", help=t("seuil_help"))
 
     with d:
         taux = n["OK"] / max(total, 1)
@@ -452,7 +454,7 @@ ROUGE, ORANGE = HEX["ERREUR"], "#f08c00"
 def histogram():
     """Scores de confiance (lignes tranchées par l'IA + vraies anomalies), empilés : rouge = vraie anomalie, orange = écart justifié."""
     d = df[(df.Source_verdict == "IA") | df.Statut.isin(["ERREUR", "A_REVUE_HUMAINE"])]
-    d = d[d.Statut.isin(["ERREUR", "ECART_JUSTIFIE"])].assign(Verdict=lambda x: x.Statut.map(LABEL),
+    d = d[d.StatutInit.isin(["ERREUR", "ECART_JUSTIFIE"])].assign(Verdict=lambda x: x.StatutInit.map(LABEL),
                                                                Confiance=lambda x: x.Confiance.astype(float))
     dom = [LABEL["ERREUR"], LABEL["ECART_JUSTIFIE"]]
     return (alt.Chart(d).mark_bar(stroke="white", strokeWidth=0.5)
@@ -502,23 +504,23 @@ with st.container(border=True):
         st.altair_chart(histogram(), width="stretch")
     with h2c:
         st.markdown(f"**{t('cause_title')}**")
-        x = df[df.Statut == valeur("pie_cause")]
+        x = df[df.StatutInit == valeur("pie_cause")]
         cause = x.Cause_probable.where(x.Cause_probable.astype(bool), x.Règle).replace("", t("unspecified"))
         st.altair_chart(pie(cause), width="stretch")
         choix("pie_cause")
     with h3c:
         st.markdown(f"**{t('emp_title')}**")
-        st.altair_chart(pie(df[df.Statut == valeur("pie_emp")].Matricule.astype(str)), width="stretch")
+        st.altair_chart(pie(df[df.StatutInit == valeur("pie_emp")].Matricule.astype(str)), width="stretch")
         choix("pie_emp")
 
 
 def csv_bytes(d):  # séparateur ; et BOM UTF-8 : s'ouvre correctement dans Excel en français
-    return d.drop(columns=["RefAlt", "Nature"], errors="ignore").to_csv(index=False, sep=";").encode("utf-8-sig")
+    return d.drop(columns=["RefAlt", "Nature", "StatutInit"], errors="ignore").to_csv(index=False, sep=";").encode("utf-8-sig")
 
 
 def open_row(i):
     """Ouvre la ligne i dans « Investiguer les données » (filtres effacés, ligne sélectionnée et surlignée)."""
-    if df.loc[i].Statut == "ECART_JUSTIFIE":
+    if df.loc[i].StatutInit == "ECART_JUSTIFIE":
         st.session_state.hl_just = i
     else:
         st.session_state.f_champs, st.session_state.f_mats = [], []
@@ -536,7 +538,6 @@ with st.container(border=True):
         m2.metric(t("todo_left"), nr)
         st.pills(t("scope"), ["ERREUR", "ECART_JUSTIFIE"], selection_mode="multi", default=["ERREUR", "ECART_JUSTIFIE"],
                  format_func=LABEL.get, key="scope")
-        st.slider(t("seuil"), 50, 100, 95, 1, format="%d %%", key="seuil", help=t("seuil_help"))
         st.progress((nb - nr) / nb if nb else 1.0, text=t("progress", d=nb - nr, n=nb))
         st.caption(t("todo_cap"))
     with d2_:
@@ -553,7 +554,7 @@ with st.container(border=True):
 section(t("investigate"))
 with st.container(border=True):
     d1, d2, d3, d4 = st.columns(4)
-    d1.download_button(t("dl_xlsx"), corroboria.to_excel_bytes(df), "rapport_corroboration.xlsx",
+    d1.download_button(t("dl_xlsx"), corroboria.to_excel_bytes(df.drop(columns="StatutInit")), "rapport_corroboration.xlsx",
                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     d2.download_button(t("dl_all"), csv_bytes(df), "corroboration_complet.csv", "text/csv")
     d3.download_button(t("dl_err"), csv_bytes(df[df.Statut.isin(["ERREUR", "A_REVUE_HUMAINE"])]),
@@ -567,7 +568,7 @@ with st.container(border=True):
                                                   t("tab_field"), t("tab_all"), t("tab_gloss"), t("tab_set")])
 
     with tab1:
-        err = a_faire[a_faire.Statut.isin(["ERREUR", "A_REVUE_HUMAINE"])]
+        err = a_faire[a_faire.StatutInit != "ECART_JUSTIFIE"]
         if err.empty:
             st.success(t("no_err"))
         else:
@@ -627,7 +628,7 @@ with st.container(border=True):
                     st.rerun()
 
     with tab2:
-        just = df[df.Statut == "ECART_JUSTIFIE"].sort_values("Confiance", kind="stable")
+        just = df[df.StatutInit == "ECART_JUSTIFIE"].sort_values("Confiance", kind="stable")
         st.caption(t("just_cap"))
         editor(just[COLS[1:6] + ["Source_verdict", "Confiance", "Règle", "Explication"]], "ed_just",
                highlight=st.session_state.get("hl_just"))
@@ -639,7 +640,7 @@ with st.container(border=True):
         st.dataframe(res, width="stretch")
 
     with tab4:
-        show(df)
+        show(df.drop(columns="StatutInit"))
 
     with tab5:
         st.caption(t("gloss_cap"))
