@@ -1,10 +1,10 @@
-"""Génère les captures d'écran du guide d'utilisation (docs/guide/img/*.png) en pilotant l'application avec Chrome (Selenium).
+"""Génère les captures d'écran du guide d'utilisation (docs/img_guide/*.png) en pilotant l'application avec Chrome (Selenium).
 
 Prérequis : Chrome et `pip install selenium`.
 Usage :
     python -m streamlit run app.py --server.port 8620 --server.headless true            # application
-    python -m streamlit run docs/guide/serveur_demo.py --server.port 8621 --server.headless true   # démo des corrections
-    python docs/guide/capture_guide.py            # utilise http://localhost:8620 et http://localhost:8621
+    python -m streamlit run scripts/guide/serveur_demo.py --server.port 8621 --server.headless true   # démo des corrections
+    python scripts/guide/capture_guide.py            # utilise http://localhost:8620 et http://localhost:8621
 Les fichiers réels (corrections.csv, regles_apprises.json) ne sont jamais modifiés : la démo des corrections utilise un dossier temporaire.
 """
 import os
@@ -20,7 +20,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 
 ROOT = Path(__file__).resolve().parents[2]
-IMG = ROOT / "docs" / "guide" / "img"
+IMG = ROOT / "docs" / "img_guide"
 IMG.mkdir(parents=True, exist_ok=True)
 URL = os.environ.get("CORRO_URL", "http://localhost:8620/")
 URL_DEMO = os.environ.get("CORRO_URL_DEMO", "http://localhost:8621/")

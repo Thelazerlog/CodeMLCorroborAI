@@ -13,10 +13,11 @@ import unicodedata
 import corroboria
 import llm
 
-STATUTS = [(r"anomal|erreur|error", "ERREUR"), (r"justifi", "ECART_JUSTIFIE"), (r"relire|revue|review", "A_REVUE_HUMAINE"),
+REVUES = ["A_REVUE_JUSTIFIE", "A_REVUE_ERREUR"]
+STATUTS = [(r"anomal|erreur|error", "ERREUR"), (r"systemati", "ECART_SYSTEMATIQUE"), (r"justifi(?!e?s? systemati)", "ECART_JUSTIFIE"), (r"relire|revue|review", "A_REVUE"),
            (r"conforme|compliant|\bok\b", "OK")]
-LABEL = {"fr": {"ERREUR": "vraie anomalie", "ECART_JUSTIFIE": "écart justifié", "A_REVUE_HUMAINE": "à relire", "OK": "conforme"},
-         "en": {"ERREUR": "true anomaly", "ECART_JUSTIFIE": "justified gap", "A_REVUE_HUMAINE": "to review", "OK": "compliant"}}
+LABEL = {"fr": {"ERREUR": "vraie anomalie", "ECART_JUSTIFIE": "écart justifié", "ECART_SYSTEMATIQUE": "écart justifié (100 % des données)", "A_REVUE_JUSTIFIE": "à relire (écart justifié)", "A_REVUE_ERREUR": "à relire (vraie anomalie)", "OK": "conforme"},
+         "en": {"ERREUR": "true anomaly", "ECART_JUSTIFIE": "justified gap", "ECART_SYSTEMATIQUE": "justified gap (100% of the data)", "A_REVUE_JUSTIFIE": "to review (justified gap)", "A_REVUE_ERREUR": "to review (true anomaly)", "OK": "compliant"}}
 SYNONYMES = {r"courriel|email|e-mail|\bmail\b|adresse": ["contactEmail"], r"contrat|type d'employe|type of employee|employee type": ["contractTypeCode"],
              r"\bheures?\b|\bhours?\b": ["weeklyHoursOverride", "dailyHoursOverride"], r"\bpostes?\b|\broles?\b|\bposition": ["positionName", "positionId", "positionCode"],
              r"\bsites?\b|emplacement|location": ["siteName", "siteCode"], r"date d'embauche|embauche|hire": ["onboardDate"],
@@ -81,7 +82,9 @@ def norm(s):
 
 def entites(q, df):
     """Statuts, champs et employé cités dans la question (q normalisée)."""
-    statuts = [code for motif, code in STATUTS if re.search(motif, q)]
+    statuts = [c for motif, code in STATUTS if re.search(motif, q) for c in (REVUES if code == "A_REVUE" else [code])]
+    if "ECART_JUSTIFIE" in statuts and "ECART_SYSTEMATIQUE" not in statuts:   # « écarts justifiés » couvre aussi les systématiques
+        statuts.append("ECART_SYSTEMATIQUE")
     champs = []
     for c in sorted(df.Champ.unique(), key=len, reverse=True):
         base = re.sub(r"\s*\(.*\)$", "", c)
@@ -169,7 +172,7 @@ def _repondre(question, df, lang="fr", ctx=None):
         return ({"texte": t["seuil"].format(n=n[0]), "actions": {"seuil": n[0]}} if n else {"texte": t["seuil_non"], "actions": {}})
     if re.search(r"\bexplique|\bexpliquer|\bpourquoi|\bexplain|\bwhy\b", q):
         if emp or champs:
-            cand = df[_masque(df, [s for s in ("ERREUR", "A_REVUE_HUMAINE", "ECART_JUSTIFIE") if not statuts or s in statuts], champs, emp)]
+            cand = df[_masque(df, [s for s in ("ERREUR", *REVUES, "ECART_JUSTIFIE", "ECART_SYSTEMATIQUE") if not statuts or s in statuts], champs, emp)]
             cand = cand.sort_values("Priorité", ascending=False)
             if len(cand):
                 r = cand.iloc[0]
@@ -198,7 +201,7 @@ def _repondre(question, df, lang="fr", ctx=None):
         out = (t["total"] if n else t["total_0"]).format(n=n, ctx=pref + c)
         if n and not statuts:
             out += " " + t["ventil"].format(ctx=c, d=t["sep"].join(f"{lab[s]} {int((df[m].Statut == s).sum())}"
-                                                                    for s in ("OK", "ECART_JUSTIFIE", "ERREUR", "A_REVUE_HUMAINE")
+                                                                    for s in ("OK", "ECART_JUSTIFIE", "ECART_SYSTEMATIQUE", "ERREUR", *REVUES)
                                                                     if (df[m].Statut == s).any()))
         elif n and not champs and statuts:
             out += " " + t["detail"].format(d=_compte(df[m].Champ))
@@ -218,7 +221,7 @@ def _repondre(question, df, lang="fr", ctx=None):
                                            d=e["total_changes"]), "actions": {}}
     if re.search(r"resume|bilan|synthese|summary|overview|ou en (suis|est)|where am i|where are we|progress|avancement", q):
         n = len(df)
-        d = t["sep"].join(f"{lab[s]} {int((df.Statut == s).sum())}" for s in ("OK", "ECART_JUSTIFIE", "ERREUR", "A_REVUE_HUMAINE")
+        d = t["sep"].join(f"{lab[s]} {int((df.Statut == s).sum())}" for s in ("OK", "ECART_JUSTIFIE", "ECART_SYSTEMATIQUE", "ERREUR", *REVUES)
                           if (df.Statut == s).any())
         an = df[df.Statut == "ERREUR"]
         return {"texte": t["bilan"].format(n=n, d=d, p=f"{(df.Statut == 'OK').mean():.0%}", c=(an.Champ.value_counts().index[0] if len(an) else "-"),

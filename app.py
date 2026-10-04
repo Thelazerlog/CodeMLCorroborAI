@@ -1,6 +1,7 @@
 """Application CorroborIA : streamlit run app.py"""
 import base64
 import hashlib
+import re
 import io
 import unicodedata
 from pathlib import Path
@@ -15,6 +16,7 @@ import ia
 import assistant
 import llm
 import retours
+import traduction
 
 HERE = Path(__file__).parent
 ASSETS = HERE / "assets"
@@ -49,7 +51,7 @@ st.set_page_config(page_title="CorroborIA", page_icon=trimmed(LOGO) if LOGO else
 # ------------------------------------------------------------------ langue (fr / en)
 TR = {
     "fr": {
-        "Conforme": "Conforme", "ECART_JUSTIFIE": "Écart justifié", "ERREUR": "Vraie anomalie", "A_REVUE_HUMAINE": "À relire",
+        "Conforme": "Conforme", "ECART_JUSTIFIE": "Écart justifié", "ECART_SYSTEMATIQUE": "Écart justifié (100 % des données)", "ERREUR": "Vraie anomalie", "A_REVUE_JUSTIFIE": "À relire (écart justifié)", "A_REVUE_ERREUR": "À relire (vraie anomalie)",
         "data": "Données", "data_cap": "Par défaut, les fichiers fournis dans le dossier sont utilisés. Les fichiers sont lus en lecture seule.",
         "up_source": "Système A – RH (Source)", "up_dest": "Système B – Temps (Destination)", "up_detail": "Détail du poste",
         "up_motif": "Motif de la situation d'emploi", "run": "Lancer la corroboration",
@@ -70,7 +72,7 @@ TR = {
         "no_err": "Aucune erreur à investiguer.",
         "top1": "**Priorité n°1** : `{c}`, employé {m} ({p}/100)", "top_field": "**Champ le plus touché** : `{c}` ({n} cas)",
         "by_ai": "**Écarts tranchés par l'IA** : {a} (confiance générale du modèle : **{c}**)",
-        "dl_xlsx": "Rapport Excel", "dl_all": "CSV – tout", "dl_err": "CSV – à investiguer", "dl_just": "CSV – justifiés",
+        "dl_xlsx": "Rapport Excel", "dl_full": "Télécharger le rapport de corroboration complet - Excel", "dl_all": "CSV – tout", "dl_err": "CSV – à investiguer", "dl_just": "CSV – justifiés",
         "tab_inv": "Vraie anomalie", "tab_just": "Écarts justifiés", "tab_field": "Par champ", "tab_all": "Tout",
         "tab_gloss": "Glossaire", "tab_set": "Paramètres",
         "f_field": "Filtrer par champ", "f_emp": "Filtrer par matricule",
@@ -95,13 +97,13 @@ TR = {
         "w_norm": "Poids effectifs après normalisation : gravité {g:.0%} · confiance {c:.0%} · récurrence {r:.0%}",
         "sev_title": "Gravité par variable", "sev_intro": "Coefficient de 0 à 1 par champ (1 = le plus prioritaire). Modifie directement dans le tableau.",
         "sev_col": "Gravité (0-1)", "reset": "Rétablir les valeurs par défaut",
-        "hist_title": "Confiance du modèle", "cause_title": "Cause probable", "emp_title": "Employé", "others": "Autres", "unspecified": "Non précisée",
+        "hist_title": "Confiance du modèle", "cause_title": "Cause probable", "emp_title": "Employé", "others": "Autres", "unspecified": "Non précisée", "no_rows_status": "Aucune ligne avec ce statut.",
         "conf_axis": "Confiance", "gpu_found": "GPU NVIDIA détecté : {g}", "gpu_none": "Aucun GPU NVIDIA détecté : calcul sur CPU.",
         "device": "Calcul", "dev_auto": "Automatique (GPU si disponible)", "dev_cpu": "CPU seulement", "on_proc": "Calculé sur : {p}",
         "click_hint": "Clique sur une part de l'anneau ou d'un camembert, ou choisis une pastille, pour afficher les lignes correspondantes.", "rows_of": "{n} lignes : {l}",
         "selected": "Données sélectionnées", "fun": ["À vous de jouer", "Bon début", "On avance bien", "Plus qu'un petit effort", "Presque fini", "Mission accomplie"],
         "fun_lbl": "Revue humaine", "rev_title": "Relecture", "rev_opt": "Relire les vraies anomalies sous le seuil de confiance",
-        "rev_help": "Non : une vraie anomalie n'est jamais à relire (elle ne compte pas dans « À faire »). Oui : sous le seuil de confiance, elle passe en « À relire » et compte dans « À faire ».",
+        "rev_help": "Non : les vraies anomalies ne sont pas à relire (cases « Ok ? » pré-cochées, hors barre de progression). Oui : toutes les vraies anomalies sont à relire et comptent dans la barre ; sous le seuil de confiance, elles passent en « À relire (vraie anomalie) ».",
         "yes": "Oui", "no": "Non", "pick_pills": "Afficher", "and_cause": "cause", "and_emp": "employé",
         "sort_lbl": "Trier", "sort_desc": "Priorité décroissante", "sort_asc": "Priorité croissante",
         "dl_cur": "Télécharger le tableau actuellement affiché - CSV", "v_todo": "À vérifier", "v_all": "Tout", "v_field": "Par champ", "v_gloss": "Glossaire", "v_set": "Paramètres",
@@ -143,7 +145,7 @@ TR = {
         "free_text": "",
     },
     "en": {
-        "Conforme": "Compliant", "ECART_JUSTIFIE": "Justified gap", "ERREUR": "True anomaly", "A_REVUE_HUMAINE": "To review",
+        "Conforme": "Compliant", "ECART_JUSTIFIE": "Justified gap", "ECART_SYSTEMATIQUE": "Justified gap (100% of the data)", "ERREUR": "True anomaly", "A_REVUE_JUSTIFIE": "To review (justified gap)", "A_REVUE_ERREUR": "To review (true anomaly)",
         "data": "Data", "data_cap": "By default, the files provided in the folder are used. Files are read-only.",
         "up_source": "System A – HR (source)", "up_dest": "System B – Time (target)", "up_detail": "Position detail",
         "up_motif": "Employment status reason", "run": "Run the corroboration",
@@ -164,7 +166,7 @@ TR = {
         "no_err": "No error to investigate.",
         "top1": "**Top priority**: `{c}`, employee {m} ({p}/100)", "top_field": "**Most affected field**: `{c}` ({n} cases)",
         "by_ai": "**Gaps decided by AI**: {a} (overall model confidence: **{c}**)",
-        "dl_xlsx": "Excel report", "dl_all": "CSV – all", "dl_err": "CSV – to investigate", "dl_just": "CSV – justified",
+        "dl_xlsx": "Excel report", "dl_full": "Download the full corroboration report - Excel", "dl_all": "CSV – all", "dl_err": "CSV – to investigate", "dl_just": "CSV – justified",
         "tab_inv": "True anomaly", "tab_just": "Justified gaps", "tab_field": "By field", "tab_all": "All",
         "tab_gloss": "Glossary", "tab_set": "Settings",
         "f_field": "Filter by field", "f_emp": "Filter by employee ID",
@@ -189,13 +191,13 @@ TR = {
         "w_norm": "Effective weights after normalisation: severity {g:.0%} · confidence {c:.0%} · recurrence {r:.0%}",
         "sev_title": "Severity by variable", "sev_intro": "Coefficient from 0 to 1 per field (1 = highest priority). Edit directly in the table.",
         "sev_col": "Severity (0-1)", "reset": "Restore default values",
-        "hist_title": "Model confidence", "cause_title": "Probable cause", "emp_title": "Employee", "others": "Others", "unspecified": "Unspecified",
+        "hist_title": "Model confidence", "cause_title": "Probable cause", "emp_title": "Employee", "others": "Others", "unspecified": "Unspecified", "no_rows_status": "No rows with this status.",
         "conf_axis": "Confidence", "gpu_found": "NVIDIA GPU detected: {g}", "gpu_none": "No NVIDIA GPU detected: running on CPU.",
         "device": "Compute", "dev_auto": "Automatic (GPU if available)", "dev_cpu": "CPU only", "on_proc": "Computed on: {p}",
         "click_hint": "Click a slice of the ring or of a pie, or pick a pill, to display the matching rows.", "rows_of": "{n} rows: {l}",
         "selected": "Selected data", "fun": ["Your move", "Good start", "Making progress", "Just a little more", "Almost done", "Mission accomplished"],
         "fun_lbl": "Human review", "rev_title": "Review", "rev_opt": "Re-read true anomalies below the confidence threshold",
-        "rev_help": "No: a true anomaly is never re-read (it does not count in \"To do\"). Yes: below the confidence threshold, it becomes \"To review\" and counts in \"To do\".",
+        "rev_help": "No: true anomalies are not to be re-read (\"Ok?\" boxes pre-ticked, outside the progress bar). Yes: all true anomalies are to be re-read and count in the bar; below the confidence threshold they become \"To review (true anomaly)\".",
         "yes": "Yes", "no": "No", "pick_pills": "Show", "and_cause": "cause", "and_emp": "employee",
         "sort_lbl": "Sort", "sort_desc": "Highest priority first", "sort_asc": "Lowest priority first",
         "dl_cur": "Download the table currently displayed - CSV", "v_todo": "To check", "v_all": "All", "v_field": "By field", "v_gloss": "Glossary", "v_set": "Settings",
@@ -267,10 +269,10 @@ def flag_svg(code):
 
 
 # Pastilles de couleur (caractère « ● », pas d'émoji) : conforme / justifié / erreur / à revoir
-KEYS = {"OK": "Conforme", "ECART_JUSTIFIE": "ECART_JUSTIFIE", "ERREUR": "ERREUR", "A_REVUE_HUMAINE": "A_REVUE_HUMAINE"}
+KEYS = {"OK": "Conforme", "ECART_JUSTIFIE": "ECART_JUSTIFIE", "ECART_SYSTEMATIQUE": "ECART_SYSTEMATIQUE", "ERREUR": "ERREUR", "A_REVUE_JUSTIFIE": "A_REVUE_JUSTIFIE", "A_REVUE_ERREUR": "A_REVUE_ERREUR"}
 LABEL = {s: TR[lang][k] for s, k in KEYS.items()}
-HEX = {"OK": "#2e9e5b", "ECART_JUSTIFIE": "#e0b020", "ERREUR": "#d64545", "A_REVUE_HUMAINE": "#e8892b"}
-NAMED = {"OK": "green", "ECART_JUSTIFIE": "yellow", "ERREUR": "red", "A_REVUE_HUMAINE": "orange"}
+HEX = {"OK": "#2e9e5b", "ECART_JUSTIFIE": "#e0b020", "ECART_SYSTEMATIQUE": "#3b82c4", "ERREUR": "#d64545", "A_REVUE_JUSTIFIE": "#8e6bbf", "A_REVUE_ERREUR": "#e8892b"}
+NAMED = {"OK": "green", "ECART_JUSTIFIE": "yellow", "ECART_SYSTEMATIQUE": "blue", "ERREUR": "red", "A_REVUE_JUSTIFIE": "violet", "A_REVUE_ERREUR": "orange"}
 
 
 def dot(statut):
@@ -342,13 +344,14 @@ with st.sidebar:
         st.session_state.run = True
     st.subheader(t("llm"))
     # Ollama n'est interrogé que lorsqu'on clique sur « Expliquer » (aucun appel réseau à chaque rechargement)
-    labels = {m: f"{name} ({m})" for name, m, _ in llm.PROFILES}
-    model = st.radio(t("llm_model"), [m for _, m, _ in llm.PROFILES], format_func=labels.get, help=t("llm_help"))  # boutons : pas de saisie libre
+    profils = llm.profils(lang)
+    labels = {m: f"{name} ({m})" for name, m, _ in profils}
+    model = st.radio(t("llm_model"), [m for _, m, _ in profils], format_func=labels.get, help=t("llm_help"))  # boutons : pas de saisie libre
     gpus = gpu_list()
     st.caption(t("gpu_found", g=" ; ".join(gpus)) if gpus else t("gpu_none"))
     device = st.radio(t("device"), ["auto", "cpu"], horizontal=True, key="device", disabled=not gpus,
                       format_func=lambda d: t("dev_auto") if d == "auto" else t("dev_cpu"))
-    st.caption(dict((m, n) for _, m, n in llm.PROFILES)[model])
+    st.caption(dict((m, n) for _, m, n in profils)[model])
     st.divider()
     st.caption(t("side_note"))
 
@@ -406,7 +409,7 @@ except Exception as e:
 
 # paramètres du score de priorité (onglet Paramètres) : relus ici pour s'appliquer à tout l'écran
 W_DEF = {k: int(round(v * 100)) for k, v in ia.WEIGHTS.items()}
-for _k, _v in [*((f"w_{k}", v) for k, v in W_DEF.items()), ("relire_anom", False)]:
+for _k, _v in [*((f"w_{k}", v) for k, v in W_DEF.items()), ("relire_anom", True)]:
     st.session_state.setdefault(_k, _v)
     st.session_state[_k] = st.session_state[_k]  # garde la valeur même si le widget n'est pas affiché dans ce tour
 weights = {k: st.session_state[f"w_{k}"] / 100 for k in W_DEF}
@@ -414,8 +417,24 @@ sev_user = st.session_state.get("sev", {})
 seuil = st.session_state.get("seuil", 90) / 100
 relire_anom = st.session_state["relire_anom"]  # option Paramètres : relire aussi les vraies anomalies sous le seuil
 df = df.assign(StatutInit=df.Statut)  # verdict d'origine, avant application du seuil
-df.loc[(df.Statut != "OK") & (df.Confiance.astype(float) < seuil) & ((df.StatutInit != "ERREUR") | relire_anom),
-       "Statut"] = "A_REVUE_HUMAINE"
+
+
+def origine_revue(r):
+    """Verdict dont la ligne « À relire » est issue : vraie anomalie ou écart justifié (règle initiale si l'IA a hésité)."""
+    if r.StatutInit in ("ERREUR", "ECART_JUSTIFIE"):
+        return r.StatutInit
+    m = re.match(r"\[règle initiale : (\w+)\]", str(r.Explication))
+    return "ERREUR" if m and m.group(1) == "ERREUR" else "ECART_JUSTIFIE"
+
+
+_rev = ((df.Statut != "OK") & (df.Confiance.astype(float) < seuil) & ((df.StatutInit != "ERREUR") | relire_anom)) | (df.Statut == "A_REVUE_HUMAINE")
+_orig = df.apply(origine_revue, axis=1)
+df.loc[_rev & (_orig == "ERREUR"), "Statut"] = "A_REVUE_ERREUR"       # À relire (vraie anomalie)
+df.loc[_rev & (_orig != "ERREUR"), "Statut"] = "A_REVUE_JUSTIFIE"     # À relire (écart justifié)
+part_champ = df.groupby("Champ").StatutInit.agg(lambda s: (int((s == "ECART_JUSTIFIE").sum()), len(s))).to_dict()  # (écarts justifiés, lignes) par champ
+# Écart justifié (100 % des données) : champ dont TOUTES les lignes (au moins 3) sont des écarts justifiés (ex. courriel de dév.)
+_par_champ = df.groupby("Champ").StatutInit.agg(lambda s: len(s) >= 3 and bool((s == "ECART_JUSTIFIE").all()))
+df.loc[(df.Statut == "ECART_JUSTIFIE") & df.Champ.map(_par_champ), "Statut"] = "ECART_SYSTEMATIQUE"
 df = df.assign(Priorité=ia.priorite(df, weights, sev_user))
 wsum = sum(weights.values()) or 1.0
 wn = {k: v / wsum for k, v in weights.items()}
@@ -428,19 +447,21 @@ def vkey(r):
     return f"{r.Matricule}|{r.Champ}|{r.TypeAffectation}|{r.ValeurSourceA}|{r.ValeurDestB}"
 
 
+REVUES = ["A_REVUE_JUSTIFIE", "A_REVUE_ERREUR"]  # les deux sous-statuts de « À relire »
 scope = ["ERREUR", "ECART_JUSTIFIE"]  # catégories prises en compte dans la barre de revue humaine
 # à faire = lignes « À relire » (confiance sous le seuil) ; une vraie anomalie n'en fait partie que si l'option Paramètres est sur « Oui »
-a_faire = df[(df.Statut == "A_REVUE_HUMAINE") & (df.StatutInit.isin(scope) | (df.StatutInit == "A_REVUE_HUMAINE"))]
+a_faire = df[(df.Statut.isin(REVUES) & (df.StatutInit.isin(scope) | (df.StatutInit == "A_REVUE_HUMAINE")))
+             | ((df.Statut == "ERREUR") & relire_anom)]   # option Paramètres « Oui » : toutes les vraies anomalies sont à relire
 a_faire = a_faire.sort_values(["Priorité", "Confiance"], ascending=[False, True])
 
 
 def auto_ok(r):
     """Pré-vérifié automatiquement : écart justifié dont la confiance atteint le seuil, et vraie anomalie tant que
     l'option Paramètres « relire les vraies anomalies » est sur Non (ou si sa confiance atteint le seuil)."""
-    if r.Statut == "ECART_JUSTIFIE":
+    if r.Statut in ("ECART_JUSTIFIE", "ECART_SYSTEMATIQUE"):
         return float(r.Confiance) >= seuil
     if r.Statut == "ERREUR":
-        return (not relire_anom) or float(r.Confiance) >= seuil
+        return not relire_anom
     return False
 
 
@@ -618,7 +639,7 @@ def tableau_lignes(d, actif):
                        "matricule": str(r.Matricule), "champ": r.Champ, "va": str(r.ValeurSourceA), "vb": str(r.ValeurDestB),
                        "statut": r.Statut, "label": LABEL[r.Statut], "couleur": HEX[r.Statut], "options": valides,
                        "source": TR[lang]["src"].get(r.Source_verdict, r.Source_verdict), "conf": f"{float(r.Confiance):.0%}",
-                       "regle": str(r.Règle), "cause": str(r.Cause_probable or "")})
+                       "regle": traduction.traduire(str(r.Règle), lang), "cause": traduction.traduire(str(r.Cause_probable or ""), lang)})
     vide = lambda c: all(str(x[c]).strip() in ("", "nan", "None") for x in lignes)
     data = {"rows": lignes, "show": {"regle": not vide("regle"), "cause": not vide("cause")},
             "icons": {"grise": icone("cloche_grise.png", 68, rogner=False), "violette": icone("cloche_violette_son.png", 68, rogner=False),
@@ -635,12 +656,12 @@ def tableau_lignes(d, actif):
 
 
 # ------------------------------------------------------------------ dashboard
-ORDER = ["OK", "ECART_JUSTIFIE", "ERREUR", "A_REVUE_HUMAINE"]
+ORDER = ["OK", "ECART_JUSTIFIE", "ECART_SYSTEMATIQUE", "ERREUR", *REVUES]
 c = df.Statut.value_counts()
 total = len(df)
 n = {s: int(c.get(s, 0)) for s in ORDER}
-SHOWN = [s for s in ORDER if s != "A_REVUE_HUMAINE" or n[s] > 0]  # « À relire » n'apparaît que s'il y a des lignes
-a_investiguer = df[df.Statut.isin(["ERREUR", "A_REVUE_HUMAINE"])].sort_values("Priorité", ascending=False)
+SHOWN = [s for s in ORDER if (s not in REVUES and s != "ECART_SYSTEMATIQUE") or n[s] > 0]  # « À relire » n'apparaît que s'il y a des lignes
+a_investiguer = df[df.Statut.isin(["ERREUR", *REVUES])].sort_values("Priorité", ascending=False)
 
 
 def donut():
@@ -722,7 +743,7 @@ with st.container(border=True):
             top = a_investiguer.iloc[0]
             vc = a_investiguer.Champ.value_counts()
             par_ia = int((df[df.Statut != "OK"].Source_verdict == "IA").sum())
-            ia_rows = df[(df.Source_verdict == "IA") | df.Statut.isin(["ERREUR", "A_REVUE_HUMAINE"])]  # IA + vraies anomalies
+            ia_rows = df[(df.Source_verdict == "IA") | df.Statut.isin(["ERREUR", *REVUES])]  # IA + vraies anomalies
             conf = f"{ia_rows.Confiance.astype(float).mean():.0%}" if len(ia_rows) else "n/a"
             st.markdown(t("top1", c=top.Champ, m=top.Matricule, p=top.Priorité) + "  \n"
                         + t("top_field", c=vc.index[0], n=int(vc.iloc[0])) + "  \n"
@@ -737,23 +758,30 @@ ROUGE, ORANGE = HEX["ERREUR"], "#f08c00"
 VIOLET = "#8e6bbf"
 
 
+COURT = {"fr": {"ERREUR": "Vraie anomalie", "ECART_JUSTIFIE": "Écart justifié", "ECART_SYSTEMATIQUE": "Écart 100 %",
+                "A_REVUE_JUSTIFIE": "Relire (justifié)", "A_REVUE_ERREUR": "Relire (anomalie)"},
+         "en": {"ERREUR": "True anomaly", "ECART_JUSTIFIE": "Justified gap", "ECART_SYSTEMATIQUE": "Gap 100%",
+                "A_REVUE_JUSTIFIE": "Review (justified)", "A_REVUE_ERREUR": "Review (anomaly)"}}  # libellés courts pour la légende
+
+
 def histogram():
-    """Scores de confiance (lignes tranchées par l'IA + vraies anomalies + à relire), empilés par statut actuel :
-    rouge = vraie anomalie, orange = écart justifié, violet = à relire."""
-    d = df[(df.Source_verdict == "IA") | df.Statut.isin(["ERREUR", "A_REVUE_HUMAINE"])]
-    d = d[d.Statut.isin(["ERREUR", "ECART_JUSTIFIE", "A_REVUE_HUMAINE"])].assign(
-        Verdict=lambda x: x.Statut.map(LABEL), Confiance=lambda x: x.Confiance.astype(float))
-    dom = [LABEL["ERREUR"], LABEL["ECART_JUSTIFIE"], LABEL["A_REVUE_HUMAINE"]]
+    """Scores de confiance (lignes tranchées par l'IA + vraies anomalies + à relire), empilés par statut actuel."""
+    court = COURT[lang]
+    d = df[(df.Source_verdict == "IA") | df.Statut.isin(["ERREUR", *REVUES])]
+    d = d[d.Statut.isin(["ERREUR", "ECART_JUSTIFIE", "ECART_SYSTEMATIQUE", *REVUES])].assign(
+        Verdict=lambda x: x.Statut.map(court), Confiance=lambda x: x.Confiance.astype(float))
+    ordre = ["ERREUR", "ECART_JUSTIFIE", "ECART_SYSTEMATIQUE", *REVUES]
     return (alt.Chart(d).mark_bar(stroke="white", strokeWidth=0.5)
-            .encode(x=alt.X("Confiance:Q", bin=alt.Bin(extent=[0, 1.025], step=0.025), title=t("conf_axis"),
+            .encode(x=alt.X("Confiance:Q", bin=alt.Bin(extent=[0, 1.025], step=0.025), title=None,
                             scale=alt.Scale(domain=[0, 1.025], nice=False),
-                            axis=alt.Axis(format=".0%", values=[i / 10 for i in range(11)], labelFontSize=10, titleFontSize=11)),
-                    y=alt.Y("count():Q", title=None, axis=alt.Axis(labelFontSize=10)),
-                    color=alt.Color("Verdict:N", scale=alt.Scale(domain=dom, range=[ROUGE, ORANGE, VIOLET]),
-                                    legend=alt.Legend(orient="top-left", title=None, symbolType="circle", labelFontSize=11,
-                                                      fillColor="rgba(0,0,0,0)", padding=0)),
+                            axis=alt.Axis(format=".0%", values=[i / 10 for i in range(0, 11, 2)], labelFontSize=9)),
+                    y=alt.Y("count():Q", title=None, axis=alt.Axis(labelFontSize=9, tickCount=3)),
+                    color=alt.Color("Verdict:N", scale=alt.Scale(domain=[court[s] for s in ordre], range=[ROUGE, ORANGE, HEX["ECART_SYSTEMATIQUE"], HEX["A_REVUE_JUSTIFIE"], HEX["A_REVUE_ERREUR"]]),
+                                    legend=alt.Legend(orient="bottom", direction="horizontal", columns=2, title=None, symbolType="circle",
+                                                      symbolSize=90, labelFontSize=13, columnPadding=6, rowPadding=0, labelLimit=140,
+                                                      padding=0, offset=2)),
                     tooltip=["Verdict:N", alt.Tooltip("count():Q", title=t("count"))])
-            .properties(height=176, padding={"top": 6, "bottom": 6, "left": 4, "right": 4}))
+            .properties(height=215, padding={"top": 12, "bottom": 2, "left": 4, "right": 4}))
 
 
 def etiquette(serie):
@@ -765,11 +793,14 @@ def etiquette(serie):
 
 def cause_serie(x):
     """Cause probable ; à défaut (écarts justifiés), la règle appliquée."""
-    return x.Cause_probable.where(x.Cause_probable.astype(bool), x.Règle).replace("", t("unspecified"))
+    return x.Cause_probable.where(x.Cause_probable.astype(bool), x.Règle).replace("", t("unspecified")).map(lambda v: traduction.traduire(v, lang))
 
 
 def pie(serie, cle, hauteur=152):
     """Camembert cliquable des modalités les plus fréquentes (le reste regroupé dans « Autres »)."""
+    if len(serie) == 0:
+        st.caption(t("no_rows_status"))
+        return []
     vc = etiquette(serie).value_counts()
     data = pd.DataFrame({"Libellé": [str(i) for i in vc.index], t("count"): vc.values})
     hover = alt.selection_point(fields=["Libellé"], on="pointerover", clear="pointerout")
@@ -793,9 +824,9 @@ def valeur(cle):
 
 
 def choix(cle):
-    """Interrupteur Vraie anomalie / Écarts justifiés (par défaut : vraie anomalie)."""
-    st.segmented_control("-", ["ERREUR", "ECART_JUSTIFIE"], default="ERREUR", key=cle, format_func=lambda s: LABEL[s],
-                         label_visibility="collapsed")
+    """Liste déroulante de tous les statuts possibles (par défaut : vraie anomalie)."""
+    st.selectbox("-", ORDER, index=ORDER.index("ERREUR"), key=cle, format_func=lambda s: f"{LABEL[s]} ({n[s]})",
+                 label_visibility="collapsed")
 
 
 with st.container(border=True):
@@ -805,12 +836,19 @@ with st.container(border=True):
         st.altair_chart(histogram(), width="stretch")
     with h2c:
         st.markdown(f"**{t('cause_title')}**")
-        lab_cause = pie(cause_serie(df[df.StatutInit == valeur("pie_cause")]), f"pie_cause_chart_{st.session_state.get('pie_v', 0)}")
+        lab_cause = pie(cause_serie(df[df.Statut == valeur("pie_cause")]), f"pie_cause_chart_{st.session_state.get('pie_v', 0)}")
         choix("pie_cause")
     with h3c:
         st.markdown(f"**{t('emp_title')}**")
-        lab_emp = pie(df[df.StatutInit == valeur("pie_emp")].Matricule.astype(str), f"pie_emp_chart_{st.session_state.get('pie_v', 0)}")
+        lab_emp = pie(df[df.Statut == valeur("pie_emp")].Matricule.astype(str), f"pie_emp_chart_{st.session_state.get('pie_v', 0)}")
         choix("pie_emp")
+
+
+@st.cache_data(show_spinner=False)
+def rapport_excel(d, verifie):
+    """Rapport complet (Excel) : tous les contrôles avec leur statut actuel, la colonne « Vérifié » et les onglets du rapport."""
+    d = d.drop(columns=["RefAlt", "StatutInit"], errors="ignore").assign(Vérifié=list(verifie))
+    return corroboria.to_excel_bytes(d)
 
 
 def csv_bytes(d):  # séparateur ; et BOM UTF-8 : s'ouvre correctement dans Excel en français
@@ -829,13 +867,14 @@ with st.container(border=True):
         courant = (set(st.session_state.get("sel_stat") or []) | (clic - avant)) - (avant - clic)
         st.session_state["sel_stat"] = [v for v in CHOIX if v in courant]
         st.session_state["_anneau_prev"] = clic
-    st.session_state.setdefault("sel_stat", ["A_REVUE_HUMAINE"])  # au départ : les lignes à relire
+    st.session_state.setdefault("sel_stat", [s for s in REVUES if s in SHOWN])  # au départ : les lignes à relire
+    st.session_state["sel_stat"] = [v for v in st.session_state["sel_stat"] if v in CHOIX]
     pastilles = st.pills(t("pick_pills"), CHOIX, selection_mode="multi", key="sel_stat",
                          format_func=lambda v: t(NOM_VUE[v]) if v in NOM_VUE else LABEL[v]) or []
     propositions = retours.propositions()
     if propositions:
         st.info(t("cor_notice", n=len(propositions)))
-    col_dl, col_tri = st.columns([5, 4], vertical_alignment="bottom")
+    col_dl, col_xl, col_tri = st.columns([4, 3.6, 3.4], vertical_alignment="bottom")
     bouton = col_dl.container()  # bouton d'export (à gauche du tri), rempli une fois le tableau affiché connu
     with col_tri:
         ordre = st.segmented_control(t("sort_lbl"), ["desc", "asc"], default="desc", key="sel_sort",
@@ -865,12 +904,12 @@ with st.container(border=True):
         indices.append(set(df.index[df.Statut.isin(statuts)]))
         parties.append(t("v_all") if "V_ALL" in pastilles else ", ".join(LABEL[s] for s in statuts))
     if lab_cause:
-        sub = df[df.StatutInit == valeur("pie_cause")]
+        sub = df[df.Statut == valeur("pie_cause")]
         et = etiquette(cause_serie(sub))
         indices.append(set(et.index[et.isin(lab_cause)]))
         parties.append(f"{t('and_cause')} : {', '.join(lab_cause)}")
     if lab_emp:
-        sub = df[df.StatutInit == valeur("pie_emp")]
+        sub = df[df.Statut == valeur("pie_emp")]
         et = etiquette(sub.Matricule.astype(str))
         indices.append(set(et.index[et.isin(lab_emp)]))
         parties.append(f"{t('and_emp')} : {', '.join(lab_emp)}")
@@ -931,6 +970,7 @@ with st.container(border=True):
                                        Conformes=("StatutInit", lambda x: int((x == "OK").sum())),
                                        Écarts=("StatutInit", lambda x: int((x != "OK").sum())))
                  .reset_index().sort_values("Contrôles", ascending=False))
+        cat["Règle"] = cat["Règle"].map(lambda v: traduction.traduire(v, lang))
         cat["Nature"] = cat["Nature"].map({"règle": t("nat_rule"), "heuristique": t("nat_ai")}).fillna(cat["Nature"])
         st.dataframe(cat.rename(columns={"Règle": TR[lang]["cols"].get("Règle", "Règle"), "Nature": t("nature"), "Contrôles": t("n_checks"),
                                          "Conformes": t("n_ok"), "Écarts": t("n_gaps")}), width="stretch", hide_index=True)
@@ -985,7 +1025,7 @@ with st.container(border=True):
             for k, v in W_DEF.items():
                 st.session_state[f"w_{k}"] = v
             st.session_state.sev = {}
-            st.session_state.relire_anom = False
+            st.session_state.relire_anom = True
 
         st.subheader(t("rev_title"))
         st.radio(t("rev_opt"), [False, True], horizontal=True, key="relire_anom", help=t("rev_help"),
@@ -1024,6 +1064,8 @@ with st.container(border=True):
     # ---- un seul bouton : le tableau actuellement affiché
     if export is not None:
         bouton.download_button(t("dl_cur"), csv_bytes(export), f"{export_nom}.csv", "text/csv")
+    col_xl.download_button(t("dl_full"), rapport_excel(df, tuple(bool(is_ok(r)) for r in df.itertuples())), "rapport_corroboration_complet.xlsx",
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 # ------------------------------------------------------------------ bandeau violet (bas de page) : explication IA + assistant
@@ -1046,6 +1088,11 @@ st.markdown("""<style>
 .st-key-chat_zone p,.st-key-chat_zone span,.st-key-chat_zone strong,.st-key-chat_zone em,.st-key-chat_zone li{color:#1b1b1f !important}
 .st-key-bandeau_texte code,.st-key-chat_zone code{background:#eceaf3 !important;color:#1b1b1f !important}
 .st-key-chat_zone{max-height:210px;overflow-y:auto}
+.st-key-bandeau_ia [data-testid="stChatInput"],.st-key-bandeau_ia [data-testid="stChatInput"] > div{background:#fff !important}
+.st-key-bandeau_ia [data-testid="stChatInput"] textarea,.st-key-bandeau_ia [data-testid="stChatInput"] input{color:#1b1b1f !important;-webkit-text-fill-color:#1b1b1f !important;caret-color:#1b1b1f}
+.st-key-bandeau_ia [data-testid="stChatInput"] textarea::placeholder{color:#6b6b78 !important;-webkit-text-fill-color:#6b6b78 !important;opacity:1}
+.st-key-bandeau_ia [data-testid="stChatInput"] button{background:#f1edf9 !important;border:none !important}
+.st-key-bandeau_ia [data-testid="stChatInput"] button svg,.st-key-bandeau_ia [data-testid="stChatInput"] button svg *{color:#4a2d80 !important;fill:#4a2d80 !important}
 .st-key-chat_zone [data-testid="stChatMessage"]{background:#f6f3fc !important;border-radius:8px;margin-bottom:6px}
 .st-key-chat_zone button{background:#f1edf9 !important;border:1px solid #8e6bbf !important;color:#3b2470 !important;text-align:left;min-height:34px;padding:2px 8px;font-size:.82rem}
 .st-key-chat_zone button p,.st-key-chat_zone button span{color:#3b2470 !important}
@@ -1132,7 +1179,7 @@ def poser(question):
     a = r["actions"]
     if a.get("reset"):
         reset_filtres()
-        st.session_state.sel_stat = ["A_REVUE_HUMAINE"] if "A_REVUE_HUMAINE" in SHOWN else []
+        st.session_state.sel_stat = [s for s in REVUES if s in SHOWN]
     if "statuts" in a:
         st.session_state.sel_stat = [s for s in a["statuts"] if s in SHOWN]
         st.session_state.flt_champs = [c for c in a.get("champs", []) if c in set(df.Champ.map(lambda x: x.split(" (")[0]))]
@@ -1171,8 +1218,8 @@ if explication or chat_ouvert:
         entete, b_chat, fermer = st.columns([6, 2, 1.4], vertical_alignment="center")
         if explication:
             r = df.loc[_i]
-            cle_llm = f"llm_{model}_{_i}"
-            texte = llm.cached(r, model) or st.session_state.get(cle_llm)
+            cle_llm = f"llm_{model}_{lang}_{_i}"
+            texte = llm.cached(r, model, lang, round(seuil * 100), part_champ.get(r.Champ)) or st.session_state.get(cle_llm)
             echec = False
             cloche = icone("cloche_violette_son.png", 40)
             entete.markdown((f'<img src="{cloche}" style="height:26px;vertical-align:middle;margin-right:8px"/>' if cloche else "")
@@ -1187,7 +1234,7 @@ if explication or chat_ouvert:
             with cols[0]:
                 if st.session_state.pop("aide_pending", False) and not texte:  # Ollama n'est appelé qu'après un clic sur la cloche
                     with st.spinner(t("llm_spin")):
-                        texte = llm.explain_row(r, model, device if gpus else "auto")
+                        texte = llm.explain_row(r, model, device if gpus else "auto", lang, round(seuil * 100), part_champ.get(r.Champ))
                         st.session_state[cle_llm + "_proc"] = llm.processor(model)
                     echec = texte is None
                     if texte:
@@ -1200,7 +1247,7 @@ if explication or chat_ouvert:
                         if st.session_state.get(cle_llm + "_proc"):
                             st.caption(t("on_proc", p=st.session_state[cle_llm + "_proc"]) + f" · {model}")
                     else:
-                        st.markdown(f"{t('ban_fallback')} {r.Explication}")
+                        st.markdown(f"{t('ban_fallback')} {traduction.traduire(r.Explication, lang)}")
         if chat_ouvert:
             with cols[-1]:
                 zone_chat()

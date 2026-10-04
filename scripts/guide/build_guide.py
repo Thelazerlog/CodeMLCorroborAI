@@ -1,7 +1,7 @@
 """Construit le guide d'utilisation (docs/guide_utilisation.html) : un seul fichier HTML, images intégrées (base64).
 
-    python docs/guide/capture_guide.py     # (re)génère les captures dans docs/guide/img/
-    python docs/guide/build_guide.py       # assemble docs/guide_utilisation.html
+    python scripts/guide/capture_guide.py     # (re)génère les captures dans docs/img_guide/
+    python scripts/guide/build_guide.py       # assemble docs/guide_utilisation.html
 """
 import base64
 import html
@@ -9,7 +9,7 @@ from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-IMG = ROOT / "docs" / "guide" / "img"
+IMG = ROOT / "docs" / "img_guide"
 SORTIE = ROOT / "docs" / "guide_utilisation.html"
 
 
@@ -305,7 +305,7 @@ sec("assistant", "L'assistant (chatbot)", f"""
 sec("parametres", "Les paramètres", f"""
 {fig("25_parametres", "La pastille « Paramètres » : relecture des vraies anomalies, poids du score de priorité, gravité par variable.", True)}
 <h3>Relire les vraies anomalies sous le seuil</h3>
-<p>Réponse <b>Non</b> par défaut : une vraie anomalie reste une vraie anomalie, même sous le seuil, et ses cases « Ok ? » sont pré-cochées. Avec <b>Oui</b>, une vraie anomalie dont la confiance est sous le seuil passe en « À relire » et compte dans la barre de revue.</p>
+<p>Réponse <b>Oui</b> par défaut : une vraie anomalie dont la confiance est sous le seuil passe en « À relire (vraie anomalie) » et compte dans la barre de revue. Avec <b>Non</b>, une vraie anomalie reste une vraie anomalie même sous le seuil, et ses cases « Ok ? » sont pré-cochées.</p>
 <h3>Score de priorité</h3>
 <p>Trois curseurs règlent le poids de la <b>gravité du champ</b> (60 % par défaut), de la <b>confiance</b> (25 %) et de la <b>récurrence du champ</b> (15 %). Les poids sont normalisés : seule leur proportion compte. Le tableau, le tri et la « priorité n°1 » du tableau de bord suivent immédiatement.</p>
 <h3>Gravité par variable</h3>
@@ -371,7 +371,7 @@ sec("technique", "Notebook, tests et organisation du projet", f"""
 <tr><td><code>ia.py</code></td><td>Modèle scikit-learn, priorité, effet des retours.</td></tr><tr><td><code>llm.py</code></td><td>LLM local : fiche du champ, prompt, cache.</td></tr>
 <tr><td><code>retours.py</code></td><td>Journal des corrections, règles apprises.</td></tr><tr><td><code>assistant.py</code></td><td>Chatbot.</td></tr>
 <tr><td><code>glossaire_ia.json</code></td><td>Explications en langage courant des champs (modifiable).</td></tr><tr><td><code>corrections.csv</code>, <code>regles_apprises.json</code></td><td>Retours d'experts.</td></tr></table>
-<p>Pour régénérer ce guide : <code>python docs/guide/capture_guide.py</code> puis <code>python docs/guide/build_guide.py</code>.</p>
+<p>Pour régénérer ce guide : <code>python scripts/guide/capture_guide.py</code> puis <code>python scripts/guide/build_guide.py</code>.</p>
 """)
 
 # ====================================================================== 17

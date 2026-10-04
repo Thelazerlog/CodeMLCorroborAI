@@ -1,7 +1,7 @@
 """Serveur de démonstration pour les captures du guide : même application, mais journal et règles dans un dossier TEMPORAIRE,
 pré-rempli avec 3 corrections concordantes d'un expert (de quoi proposer une règle). Les vrais fichiers ne sont jamais touchés.
 
-    python -m streamlit run docs/guide/serveur_demo.py --server.port 8621 --server.headless true
+    python -m streamlit run scripts/guide/serveur_demo.py --server.port 8621 --server.headless true
 """
 import runpy
 import sys

@@ -38,7 +38,7 @@ def test_pilotage_du_tableau_statut_employe_champ(df):
     r = rep(f"Montre-moi les anomalies de l'employé {emp}", df)
     assert r["actions"]["statuts"] == ["ERREUR"] and r["actions"]["employe"] == emp
     r = rep("Affiche les à relire sur les heures", df)
-    assert r["actions"]["statuts"] == ["A_REVUE_HUMAINE"] and "weeklyHoursOverride" in r["actions"]["champs"]
+    assert r["actions"]["statuts"] == ["A_REVUE_JUSTIFIE", "A_REVUE_ERREUR"] and "weeklyHoursOverride" in r["actions"]["champs"]
     assert rep("Montre-moi", df)["actions"] == {}                      # question trop vague : on précise
 
 

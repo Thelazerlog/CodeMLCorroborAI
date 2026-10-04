@@ -43,7 +43,7 @@ def priorite(df, weights=None, severity=None):
     score = 100 * (w["gravite"] * sev + w["confiance"] * df.Confiance.astype(float)
                    + w["recurrence"] * np.minimum(n_same, 5) / 5) / s
     out = pd.Series(0, index=df.index)
-    mask = df.Statut.isin([ERREUR, REVUE])
+    mask = df.Statut.isin([ERREUR, REVUE, "A_REVUE_JUSTIFIE", "A_REVUE_ERREUR"])
     out[mask] = score[mask].round().clip(0, 100).astype(int)
     return out
 

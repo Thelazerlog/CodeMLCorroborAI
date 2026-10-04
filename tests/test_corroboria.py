@@ -152,8 +152,26 @@ def test_nom_sans_accents(tmp_path):
     assert get(c.run(p), "givenName").Statut == c.OK
 
 
-def test_regle_dates_detail_desactivee():
-    assert c.USE_DETAIL_MIN is False  # décision utilisateur : règle gardée désactivée
+def test_dates_de_debut_source_seule_et_destination_regle_transformee():
+    r = c.run()
+    for champ in ("assignmentStartDate", "termStartDate"):
+        x = r[r.Champ == champ]
+        assert (x.Statut == c.OK).sum() == 19 and (x.Statut == c.JUSTIFIE).sum() == 3 and (x.Statut == c.ERREUR).sum() == 0
+    j = r[(r.Champ == "assignmentStartDate") & (r.Statut == c.JUSTIFIE)].iloc[0]
+    assert "règle transformée" in j.Explication and str(j.ValeurSourceA) != str(j.ValeurDestB)
+
+
+def test_date_de_debut_inattendue_reste_une_anomalie(tmp_path):
+    p = make(tmp_path, [base_row()], [lambda d: d.__setitem__("assignmentStartDate", pd.Timestamp("1990-01-01"))])
+    assert get(c.run(p), "assignmentStartDate").Statut == c.ERREUR
+
+
+def test_date_regle_debut_prend_la_plus_recente():
+    det = pd.DataFrame({"IdentifiantPoste": [1, 1], "Date": pd.to_datetime(["2003-06-18", "2021-03-30"])})
+    assert c.date_regle_debut(det, 1, "2009-03-30") == pd.Timestamp("2021-03-30").date()
+    assert c.date_regle_debut(det, 1, "2025-01-01") == pd.Timestamp("2025-01-01").date()
+    assert c.date_regle_debut(det, 99, "2009-03-30") == pd.Timestamp("2009-03-30").date()
+
 
 
 # ------------------------------------------------------------------ retour d'expert
@@ -319,3 +337,15 @@ def test_fin_unite_administrative_regle_du_mapping():
     assert c.fin_unite_adm(det, 1, "2006-01-01") is None                                  # le suivant a la même unité
     assert c.fin_unite_adm(det, 1, "2009-01-01") is None                                  # aucun détail suivant
     assert c.fin_unite_adm(det, 2, "2002-01-01") is None and c.fin_unite_adm(det, 99, "2002-01-01") is None
+
+
+def test_rapport_excel_accepte_les_statuts_de_l_application(tmp_path):
+    df = ia.enrich(c.run())
+    df.loc[df.Champ == "contactEmail", "Statut"] = "ECART_SYSTEMATIQUE"
+    df.loc[df.index[df.Statut == c.ERREUR][0], "Statut"] = "A_REVUE_ERREUR"
+    xl = tmp_path / "r.xlsx"
+    c.write_sheets(df, xl)
+    x = pd.ExcelFile(xl)
+    assert len(x.parse("Écarts justifiés")) == (df.Statut.isin(c.JUSTIFIES_STATUTS)).sum()
+    assert len(x.parse("À relire")) == 1 and len(x.parse("Détail complet")) == len(df)
+    assert x.parse("Résumé par champ", index_col=0).sum().sum() == len(df) - 1   # la ligne « À relire » n'est dans aucune des 3 colonnes

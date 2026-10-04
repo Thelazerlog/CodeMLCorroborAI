@@ -105,10 +105,12 @@ def load(files=None):
 
 
 # ---------------------------------------------------------------- règles
-# La règle « min(DateEntréePoste, date d'effet de l'unité adm.) » du mapping donne, sur l'échantillon, des
-# dates antérieures pour 100 % des lignes (dates du détail du poste incohérentes) : désactivée par défaut,
-# on compare à DateEntréePoste et on journalise la valeur de la règle pour revue.
-USE_DETAIL_MIN = False
+# Dates de début : le champ source (DateEntréePoste) est la date d'effet du poste UNIQUEMENT ; le champ destination inclut
+# la règle transformée du mapping (date d'effet du poste combinée à celle du détail du poste). Sur l'échantillon, la valeur
+# de B vaut toujours soit DateEntréePoste, soit la date d'effet du détail le plus récent quand elle est postérieure :
+# la règle appliquée ici est donc « la plus récente entre DateEntréePoste et la date d'effet du dernier détail du poste »
+# (hypothèse déduite des données, à faire confirmer : le mapping parle de « la plus ancienne »).
+
 
 
 def same(e, a):
@@ -142,6 +144,13 @@ def contract_code(r):
             return "XFLR"
         return None
     return CONTRACT.get(c)
+
+
+def date_regle_debut(det, poste, debut):
+    """Date de début transformée par la règle du mapping : la plus récente entre DateEntréePoste et la date d'effet du
+    dernier détail du poste (DateEntréePoste seule si le poste n'a aucun détail)."""
+    h = det[det.IdentifiantPoste == poste]
+    return max(pd.Timestamp(debut), h.Date.max()).date() if len(h) else pd.Timestamp(debut).date()
 
 
 def unit_effective_date(det, poste, direction):
@@ -183,6 +192,7 @@ def date_fin_attendue(det, r):
     return min(dates) if dates else None
 
 
+REGLE_DEBUT = "{champ} : source = date d'effet du poste (DateEntréePoste) ; B = règle transformée (la plus récente entre DateEntréePoste et la date d'effet du dernier détail du poste)"
 REGLE_FIN = "la plus ancienne entre DateSortiePoste et la fin de l'unité adm. (date d'effet du détail suivant - 1 jour si l'unité change ; sinon aucune)"
 
 
@@ -267,14 +277,15 @@ def run(files=None):
         cmp(r, d, "isPrimaryAssignment", isP, d.isPrimaryAssignment, "P = primaire")
         cmp(r, d, "isTemporaryAssignment", isT, d.isTemporaryAssignment, "A = temporaire ; S = ni l'un ni l'autre")
 
-        # dates d'affectation : min(DateEntréePoste, date d'effet de l'unité administrative)
-        ud = unit_effective_date(det, r.CodePoste, r.CodeDirection)
-        exp_start = min(r.DateEntréePoste, ud) if (USE_DETAIL_MIN and ud is not None) else r.DateEntréePoste
-        note = "" if USE_DETAIL_MIN else f" (règle min du détail du poste désactivée ; valeur règle = {ud.date() if ud is not None else 'n/a'})"
-        cmp(r, d, "assignmentStartDate", exp_start.date(), pd.to_datetime(d.assignmentStartDate).date(),
-            "Date la plus ancienne entre DateEntréePoste et date d'effet de l'unité adm." + note)
-        cmp(r, d, "termStartDate", exp_start.date(), pd.to_datetime(d.termStartDate).date(),
-            "Date d'effet du détail du poste" + note)
+        # dates de début : source = date d'effet du poste seulement ; B = règle transformée (voir date_regle_debut)
+        debut = pd.Timestamp(r.DateEntréePoste).date()
+        regle_d = date_regle_debut(det, r.CodePoste, r.DateEntréePoste)
+        just = lambda e, a: ("B reflète la règle transformée (date d'effet du dernier détail du poste, postérieure à DateEntréePoste)"
+                             if a == regle_d else None)
+        cmp(r, d, "assignmentStartDate", debut, pd.to_datetime(d.assignmentStartDate).date(),
+            REGLE_DEBUT.format(champ="Date de début d'affectation"), justify=just)
+        cmp(r, d, "termStartDate", debut, pd.to_datetime(d.termStartDate).date(),
+            REGLE_DEBUT.format(champ="Date d'effet du détail du poste"), justify=just)
 
         # dates de fin d'affectation et de détail du poste (souvent vides : « vide » attendu = « vide » trouvé)
         fin = date_fin_attendue(det, r)
@@ -331,6 +342,8 @@ GLOSSARY_CODES = [
     ("ECART_JUSTIFIE", "Valeurs différentes mais expliquées par une règle métier ou un artefact connu"),
     ("ERREUR", "Vraie anomalie à investiguer"),
     ("A_REVUE_HUMAINE", "Cas à relire : confiance sous le seuil ou modèle pas assez sûr, un humain tranche"),
+    ("Écart justifié (100 % des données)", "Application : champ dont toutes les lignes (au moins 3) sont des écarts justifiés, par ex. contactEmail ou positionName (artefacts de non-production / anonymisation)"),
+    ("À relire (écart justifié) / (vraie anomalie)", "Application : « À relire » est scindé selon le verdict dont la ligne est issue (écart justifié ou vraie anomalie)"),
     ("règle / IA / expert", "Origine du verdict : règle déterministe, modèle scikit-learn local, ou correction d'un expert"),
     ("P / A / S", "Type d'affectation : Primaire / temporAire / Secondaire"),
     ("JWN", "Permanent temps plein (PERM_IND=1, FT_IND=1, EMPTP_CD=V)"),
@@ -376,15 +389,22 @@ def report(df):
     ].to_string(index=False))
 
 
+REVUES_STATUTS = ("A_REVUE_HUMAINE", "A_REVUE_JUSTIFIE", "A_REVUE_ERREUR")   # « À relire » (l'application le scinde en deux)
+JUSTIFIES_STATUTS = (JUSTIFIE, "ECART_SYSTEMATIQUE")                          # écarts justifiés, dont ceux présents sur 100 % du champ
+
+
 def write_sheets(df, out):
-    resume = (df.groupby(["Champ", "Statut"]).size().unstack(fill_value=0)
+    """Classeur du rapport : erreurs, à relire, écarts justifiés, résumé par champ, détail complet.
+    Accepte les statuts du moteur et ceux de l'application (À relire scindé, écart justifié sur 100 % des données)."""
+    base = df.Statut.map(lambda s: "A_REVUE_HUMAINE" if s in REVUES_STATUTS else JUSTIFIE if s in JUSTIFIES_STATUTS else s)
+    resume = (df.groupby([df.Champ, base.rename("Statut")]).size().unstack(fill_value=0)
                 .reindex(columns=[OK, JUSTIFIE, ERREUR], fill_value=0))
     erreurs = df[df.Statut == ERREUR].sort_values("Priorité", ascending=False)
-    revue = df[df.Statut == "A_REVUE_HUMAINE"].sort_values("Priorité", ascending=False)
+    revue = df[df.Statut.isin(REVUES_STATUTS)].sort_values("Priorité", ascending=False)
     with pd.ExcelWriter(out) as xw:
         erreurs.to_excel(xw, sheet_name="Erreurs à investiguer", index=False)
         revue.to_excel(xw, sheet_name="À relire", index=False)
-        df[df.Statut == JUSTIFIE].to_excel(xw, sheet_name="Écarts justifiés", index=False)
+        df[df.Statut.isin(JUSTIFIES_STATUTS)].to_excel(xw, sheet_name="Écarts justifiés", index=False)
         resume.to_excel(xw, sheet_name="Résumé par champ")
         df.to_excel(xw, sheet_name="Détail complet", index=False)
         for ws in xw.book.worksheets:

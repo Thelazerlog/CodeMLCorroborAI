@@ -1,8 +1,38 @@
 # CorroborIA – détection intelligente des écarts (système A – RH → système B – Temps)
 
-Prototype de corroboration : compare l'extraction du système A (RH, source de vérité) à celle du système B (Temps, cible) selon `Mapping.xlsx`,
-applique les règles métier, sépare **les écarts justifiés des vraies anomalies**, explique chaque verdict et produit un rapport exploitable.
-Approche hybride : **règles déterministes + modèle scikit-learn local + LLM local (Ollama)**. Aucune donnée ne quitte la machine.
+NNous avons conçu CorroborAI, une application scalable qui permet de comparer les Système A - RH et Système B - Temps. Elle utilise une approche hybride incluant des règles déterministes et un modèle scikit-learn local et génère un fichier Excel Récapitulatif. Notre modèle est explicable, transparent et donne également un score de confiance pour chacune de ses prédictions (score moyen = 95%).
+
+Mais ce n'est pas tout ! Notre application intègre également un tableau de bord complet, un système d'analyses des écarts ergonomique et un chatbot LLM guidant l'utilisateur dans l'utilisation et l'interprétation de l'application. Elle permet également à un Expert de réviser les données et met à jour automatiquement le modèle de machine learning utilisé pour la classification des écarts.
+
+<p align="center"><img src="assets/Vue%20de%20l'application%201.png" alt="Vue sur le tableau de bord de l'application" width="900"/><br/><em>Vue sur le tableau de bord de l'application.</em></p>
+
+<p align="center"><img src="assets/Explication%20IA%20d'un%20%C3%A9cart.png" alt="L'utilisateur demande de l'aide pour comprendre un écart et comment il a été classé à notre IA intégrée" width="900"/><br/><em>L'utilisateur demande de l'aide pour comprendre un écart et comment il a été classé à notre IA intégrée.</em></p>
+
+## Installer rapidement l'application
+
+1. **Cloner le dépôt**
+   ```bash
+   git clone https://github.com/Thelazerlog/CodeMLCorroborAI.git
+   cd CodeMLCorroborAI
+   ```
+2. **Installer les dépendances** (Python 3.10 ou plus)
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. **Télécharger un des modèles Ollama** (installer d'abord [Ollama](https://ollama.com)) : `qwen2.5:3b` (équilibré, recommandé), `qwen2.5:1.5b` (rapide) ou `qwen2.5:7b` (précis)
+   ```bash
+   ollama pull qwen2.5:3b
+   ```
+4. **Lancer l'application** :)
+   ```bash
+   python -m streamlit run app.py
+   ```
+   Puis ouvrir http://localhost:8501 et cliquer sur **Lancer la corroboration**. Les fichiers fournis dans `data/` sont utilisés par défaut ; sans Ollama, l'application fonctionne quand même (seule l'explication par le LLM de la cloche est désactivée).
+
+
+
+
+
 
 **Guide d'utilisation illustré : [`docs/guide_utilisation.html`](docs/guide_utilisation.html)** (un seul fichier, à ouvrir dans un navigateur).
 
@@ -14,6 +44,8 @@ python -m streamlit run app.py             # application (charger les fichiers, 
 jupyter notebook CorroborIA_remise.ipynb   # notebook de remise (déjà exécuté)
 python demo.py                             # démonstration en ligne de commande : conforme, écart justifié, vraie anomalie
 python -m pytest -v                        # tests (servent aussi de démonstration)
+python scripts/build_notebook.py           # régénère et exécute le notebook de remise (nbformat, nbclient)
+python scripts/guide/build_guide.py        # régénère docs/guide_utilisation.html à partir des captures
 ```
 - Les fichiers fournis sont dans `data/` et utilisés par défaut ; ils peuvent être remplacés depuis l'application (**Excel .xlsx ou CSV**, séparateur et encodage détectés). Ils sont **lus en lecture seule** (un test le vérifie par somme de contrôle).
 - LLM local (optionnel) : installer [Ollama](https://ollama.com) puis `ollama pull qwen2.5:3b` (équilibré), `qwen2.5:1.5b` (rapide) ou `qwen2.5:7b` (précis). Un GPU NVIDIA est utilisé automatiquement s'il existe.
@@ -33,7 +65,8 @@ corrections.csv            journal des corrections d'experts
 regles_apprises.json       règles validées par un expert (créé à la 1re validation)
 data/                      extractions A/B, mapping, tables (lecture seule)
 assets/                    logos et icônes (cloche grise/violette, crayon)
-docs/                      consignes, présentation, guide d'utilisation (HTML + script de captures)
+docs/                      consignes, présentation, guide d'utilisation (HTML), captures (img_guide/), exemple de rapport
+scripts/                   outils de remise : build_notebook.py, guide/ (capture_guide.py, serveur_demo.py, build_guide.py)
 tests/                     pytest (démo : conforme / justifié / anomalie, robustesse, retours, assistant)
 modele/                    modèle entraîné (.joblib) et sa fiche (.json), versionnés
 outputs/                   rapport Excel, cache LLM (générés)
@@ -43,9 +76,9 @@ CorroborIA_remise.ipynb    notebook de remise
 ## Architecture : trois niveaux
 1. **Comparaison brute + règles déterministes** (`corroboria.py`) : chaque champ du mapping est normalisé (accents, vides, dates, libellés, structures répétitives) puis comparé à la valeur attendue. Le verdict porte la **règle appliquée** et une explication. `Source_verdict = règle`.
 2. **IA locale sur les cas ambigus** (`ia.py`) : pour les écarts que les règles ne tranchent pas seules (courriel, libellé de poste, heures sans valeur source), un RandomForest estime P(erreur). Entre 0,35 et 0,65 le cas passe à « À relire ». `Source_verdict = IA`, avec les facteurs utilisés.
-3. **LLM local pour expliquer** (`llm.py`) : sur demande (clic sur la cloche d'une ligne), il rédige en 3 phrases claires ce que c'est, ce qu'on voit et quoi vérifier. Il reçoit une **fiche du champ** retrouvée par le code (glossaire du mapping + `glossaire_ia.json`), les codes traduits (JWN = permanent temps plein…) et les valeurs décodées (« 6900-Empl6900 » = emploi 6900, description Empl6900). **Il ne change jamais un verdict.** Réponses en cache (`outputs/llm_cache.json`) ; repli sur l'explication du moteur si Ollama est absent.
+3. **LLM local pour expliquer** (`llm.py`) : sur demande (clic sur la cloche d'une ligne), il rédige en 4 phrases claires ce que c'est, ce qu'on voit, quoi vérifier et **pourquoi la ligne a ce verdict** (règle ou modèle, confiance, seuil non atteint pour un « À relire »). Il reçoit une **fiche du champ** retrouvée par le code (glossaire du mapping + `glossaire_ia.json`), les codes traduits (JWN = permanent temps plein…) et les valeurs décodées (« 6900-Empl6900 » = emploi 6900, description Empl6900). **Il ne change jamais un verdict.** Réponses en cache (`outputs/llm_cache.json`) ; repli sur l'explication du moteur si Ollama est absent.
 
-Sur ces trois niveaux se greffent : la **priorisation** (score 0-100 = gravité du champ 60 % + confiance 25 % + récurrence 15 %, réglable), le **seuil de confiance** (sous le seuil : « À relire »), les **retours d'experts** et l'**assistant**.
+Sur ces trois niveaux se greffent : la **priorisation** (score 0-100 = gravité du champ 60 % + confiance 25 % + récurrence 15 %, réglable), le statut **Écart justifié (100 % des données)** (champ dont toutes les lignes, au moins 3, sont des écarts justifiés : `contactEmail`, `positionName`), le **seuil de confiance** (sous le seuil : « À relire », scindé dans l'application en **À relire (écart justifié)** et **À relire (vraie anomalie)** selon le verdict dont la ligne est issue), les **retours d'experts** et l'**assistant**.
 
 Chaque verdict indique son origine : **règle** du mapping, **IA** locale, **expert** (correction manuelle) ou **règle apprise** (validée par un expert).
 
@@ -66,7 +99,7 @@ Chaque verdict indique son origine : **règle** du mapping, **IA** locale, **exp
 | `isPrimaryAssignment`, `isTemporaryAssignment` | type P = primaire, A = temporaire, S = ni l'un ni l'autre | règle |
 | `detailedStatus`, `statusReasonCode`, `expectedReturnDate` | situation d'emploi via la table des motifs : accès 00/01 = actif ; 02, 03, 06, 07 = absence complète avec code Remphor et date de retour | règle |
 | `weeklyHoursOverride`, `dailyHoursOverride` | heures de la norme du poste ; valeur A vide : repli sur le détail du poste | règle + **IA** |
-| `assignmentStartDate`, `termStartDate` | DateEntréePoste, date d'effet du détail du poste | règle |
+| `assignmentStartDate`, `termStartDate` | source = DateEntréePoste seule ; B = règle transformée (la plus récente entre DateEntréePoste et la date d'effet du dernier détail du poste) : égal à la source = conforme, égal à la règle = écart justifié | règle |
 | `assignmentEndDate`, `termEndDate` | la plus ancienne entre DateSortiePoste et la fin de l'unité adm. (date d'effet du détail suivant − 1 jour si l'unité change ; sinon aucune). Vide attendu = vide trouvé | règle |
 | `Enregistrement` | complétude : chaque affectation du système A doit exister dans B (et inversement) | règle |
 
@@ -103,9 +136,9 @@ En-tête (logo, langue FR/EN) · **Tableau de bord** (anneau des verdicts, indic
 Le guide d'utilisation déroule la même démonstration dans l'application (section « Démonstration en trois cas »).
 
 ## Hypothèses et limites
-- Règle « date la plus ancienne entre DateEntréePoste et date d'effet de l'unité adm. » : elle donne une date antérieure pour 100 % de l'échantillon (dates du `détail_du_poste` incohérentes). Désactivée (`USE_DETAIL_MIN = False`) : on compare à `DateEntréePoste`. **À confirmer avec les organisateurs.**
+- Dates de début (`assignmentStartDate`, `termStartDate`) : la source (`DateEntréePoste`) est la date d'effet du poste **uniquement** ; B inclut la règle transformée. Sur l'échantillon, B vaut `DateEntréePoste` ou, quand elle est postérieure, la date d'effet du dernier détail du poste : la règle codée est donc « la plus **récente** des deux » (déduite des données, alors que le mapping parle de « la plus ancienne »). Un B égal à cette valeur est un écart justifié ; toute autre date reste une vraie anomalie. **À confirmer avec les organisateurs.**
 - Courriel et libellé de poste : préfixe `dev-` et noms différents traités comme artefacts d'anonymisation ; à revoir sur des données réelles.
-- Pas de vérité terrain : l'exactitude n'a pu être mesurée que par cohérence avec les règles et par les tests. Sur l'échantillon (20 employés, 575 contrôles) : 508 conformes, 48 écarts justifiés, 19 vraies anomalies.
+- Pas de vérité terrain : l'exactitude n'a pu être mesurée que par cohérence avec les règles et par les tests. Sur l'échantillon (20 employés, 575 contrôles) : 508 conformes, 54 écarts justifiés, 13 vraies anomalies.
 - Le modèle tranche les écarts ambigus de façon cohérente avec les règles ; il n'a pas prouvé qu'il détecte des anomalies que les règles manqueraient.
 - Un LLM de 3 milliards de paramètres peut se tromper ; ses conseils sont à relire. Les temps de réponse sur CPU sont de 15 à 130 s.
 - Champs non mappés (ex. `customAttribute_15`) ignorés, conformément à l'énoncé.
