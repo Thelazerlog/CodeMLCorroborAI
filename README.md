@@ -1,4 +1,6 @@
 # CorroborIA – détection intelligente des écarts (système A – RH → système B – Temps)
+**!!! Note : pour des raisons de confidentialité, les datasets en entrées de l'application ne sont pas sur le github, il faut les remettre dans le dossier data comme sur l'image!!!**
+<img width="1411" height="323" alt="image" src="https://github.com/user-attachments/assets/9fe3f867-49c8-4712-937e-e9742252e27f" />
 
 Nous avons conçu CorroborAI, une application scalable qui permet de comparer les Système A - RH et Système B - Temps. Elle utilise une approche hybride incluant des règles déterministes et un modèle scikit-learn local et génère un fichier Excel récapitulatif. Notre modèle est explicable, transparent et donne également un score de confiance pour chacune de ses prédictions (score moyen = 95%).
 
