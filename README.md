@@ -1,8 +1,8 @@
 # CorroborIA – détection intelligente des écarts (système A – RH → système B – Temps)
 
-NNous avons conçu CorroborAI, une application scalable qui permet de comparer les Système A - RH et Système B - Temps. Elle utilise une approche hybride incluant des règles déterministes et un modèle scikit-learn local et génère un fichier Excel Récapitulatif. Notre modèle est explicable, transparent et donne également un score de confiance pour chacune de ses prédictions (score moyen = 95%).
+Nous avons conçu CorroborAI, une application scalable qui permet de comparer les Système A - RH et Système B - Temps. Elle utilise une approche hybride incluant des règles déterministes et un modèle scikit-learn local et génère un fichier Excel récapitulatif. Notre modèle est explicable, transparent et donne également un score de confiance pour chacune de ses prédictions (score moyen = 95%).
 
-Mais ce n'est pas tout ! Notre application intègre également un tableau de bord complet, un système d'analyses des écarts ergonomique et un chatbot LLM guidant l'utilisateur dans l'utilisation et l'interprétation de l'application. Elle permet également à un Expert de réviser les données et met à jour automatiquement le modèle de machine learning utilisé pour la classification des écarts.
+Mais ce n'est pas tout! Notre application intègre également un tableau de bord complet, un système d'analyses des écarts ergonomique et un chatbot LLM guidant l'utilisateur dans l'utilisation et l'interprétation de l'application. Elle permet également à un expert de réviser les données et met à jour automatiquement le modèle de machine learning utilisé pour la classification des écarts.
 
 <p align="center"><img src="assets/Vue%20de%20l'application%201.png" alt="Vue sur le tableau de bord de l'application" width="900"/><br/><em>Vue sur le tableau de bord de l'application.</em></p>
 
@@ -136,7 +136,7 @@ En-tête (logo, langue FR/EN) · **Tableau de bord** (anneau des verdicts, indic
 Le guide d'utilisation déroule la même démonstration dans l'application (section « Démonstration en trois cas »).
 
 ## Hypothèses et limites
-- Dates de début (`assignmentStartDate`, `termStartDate`) : la source (`DateEntréePoste`) est la date d'effet du poste **uniquement** ; B inclut la règle transformée. Sur l'échantillon, B vaut `DateEntréePoste` ou, quand elle est postérieure, la date d'effet du dernier détail du poste : la règle codée est donc « la plus **récente** des deux » (déduite des données, alors que le mapping parle de « la plus ancienne »). Un B égal à cette valeur est un écart justifié ; toute autre date reste une vraie anomalie. **À confirmer avec les organisateurs.**
+- Dates de début (`assignmentStartDate`, `termStartDate`) : la source (`DateEntréePoste`) est la date d'effet du poste **uniquement** ; B inclut la règle transformée. Sur l'échantillon, B vaut `DateEntréePoste` ou, quand elle est postérieure, la date d'effet du dernier détail du poste : la règle codée est donc « la plus **récente** des deux » (déduite des données, alors que le mapping parle de « la plus ancienne »). Un B égal à cette valeur est un écart justifié ; toute autre date reste une vraie anomalie.
 - Courriel et libellé de poste : préfixe `dev-` et noms différents traités comme artefacts d'anonymisation ; à revoir sur des données réelles.
 - Pas de vérité terrain : l'exactitude n'a pu être mesurée que par cohérence avec les règles et par les tests. Sur l'échantillon (20 employés, 575 contrôles) : 508 conformes, 54 écarts justifiés, 13 vraies anomalies.
 - Le modèle tranche les écarts ambigus de façon cohérente avec les règles ; il n'a pas prouvé qu'il détecte des anomalies que les règles manqueraient.
