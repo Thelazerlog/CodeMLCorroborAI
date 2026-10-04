@@ -46,7 +46,7 @@ st.set_page_config(page_title="CorroborIA", page_icon=trimmed(LOGO) if LOGO else
 # ------------------------------------------------------------------ langue (fr / en)
 TR = {
     "fr": {
-        "Conforme": "Conforme", "ECART_JUSTIFIE": "Écart justifié", "ERREUR": "Erreur", "A_REVUE_HUMAINE": "À revue humaine",
+        "Conforme": "Conforme", "ECART_JUSTIFIE": "Écart justifié", "ERREUR": "Vraie anomalie", "A_REVUE_HUMAINE": "À revue humaine",
         "data": "Données", "data_cap": "Par défaut, les fichiers fournis dans le dossier sont utilisés. Les fichiers sont lus en lecture seule.",
         "up_source": "Système A – RH (source)", "up_dest": "Système B – Temps (cible)", "up_detail": "Détail du poste",
         "up_motif": "Motif de la situation d'emploi", "run": "Lancer la corroboration",
@@ -68,7 +68,7 @@ TR = {
         "top1": "**Priorité n°1** : `{c}`, employé {m} ({p}/100)", "top_field": "**Champ le plus touché** : `{c}` ({n} cas)",
         "by_ai": "**Écarts tranchés par l'IA** : {a} sur {b} (confiance générale du modèle : **{c}**)",
         "dl_xlsx": "Rapport Excel", "dl_all": "CSV – tout", "dl_err": "CSV – à investiguer", "dl_just": "CSV – justifiés",
-        "tab_inv": "À investiguer", "tab_just": "Écarts justifiés", "tab_field": "Par champ", "tab_all": "Tout",
+        "tab_inv": "Vraie anomalie", "tab_just": "Écarts justifiés", "tab_field": "Par champ", "tab_all": "Tout",
         "tab_gloss": "Glossaire", "tab_set": "Paramètres",
         "f_field": "Filtrer par champ", "f_emp": "Filtrer par matricule",
         "prio_help": "Score 0-100 : gravité du champ ({g:.0%}), confiance ({c:.0%}), récurrence du champ ({r:.0%}). Réglable dans Paramètres.",
@@ -92,12 +92,18 @@ TR = {
         "w_norm": "Poids effectifs après normalisation : gravité {g:.0%} · confiance {c:.0%} · récurrence {r:.0%}",
         "sev_title": "Gravité par variable", "sev_intro": "Coefficient de 0 à 1 par champ (1 = le plus prioritaire). Modifie directement dans le tableau.",
         "sev_col": "Gravité (0-1)", "reset": "Rétablir les valeurs par défaut",
+        "todo_title": "À faire", "scope": "Données à investiguer", "todo_n": "Lignes à investiguer", "todo_left": "Restantes",
+        "seuil": "Seuil de confiance minimal", "seuil_help": "En dessous de ce seuil, une validation humaine est nécessaire.",
+        "todo_cap": "À investiguer : toutes les erreurs et cas à revoir, plus les écarts justifiés par l'IA dont la confiance est sous le seuil.",
+        "progress": "{d} vérifiées sur {n}", "next_title": "Premières lignes à vérifier", "all_done": "Tout est vérifié.",
+        "ver_help": "À cocher quand la ligne a été vérifiée. Cochée automatiquement (cellule grise) quand la confiance atteint le seuil.",
+        "mark": "Marquer comme vérifié", "opened": "Ligne ouverte dans « Investiguer les données » plus bas.", "ver_col": "Vérifié",
         "cols": {},
         "src": {"règle": "règle", "IA": "IA", "expert": "expert"},
         "free_text": "",
     },
     "en": {
-        "Conforme": "Compliant", "ECART_JUSTIFIE": "Justified gap", "ERREUR": "Error", "A_REVUE_HUMAINE": "Needs human review",
+        "Conforme": "Compliant", "ECART_JUSTIFIE": "Justified gap", "ERREUR": "True anomaly", "A_REVUE_HUMAINE": "Needs human review",
         "data": "Data", "data_cap": "By default, the files provided in the folder are used. Files are read-only.",
         "up_source": "System A – HR (source)", "up_dest": "System B – Time (target)", "up_detail": "Position detail",
         "up_motif": "Employment status reason", "run": "Run the corroboration",
@@ -119,7 +125,7 @@ TR = {
         "top1": "**Top priority**: `{c}`, employee {m} ({p}/100)", "top_field": "**Most affected field**: `{c}` ({n} cases)",
         "by_ai": "**Gaps decided by AI**: {a} out of {b} (overall model confidence: **{c}**)",
         "dl_xlsx": "Excel report", "dl_all": "CSV – all", "dl_err": "CSV – to investigate", "dl_just": "CSV – justified",
-        "tab_inv": "To investigate", "tab_just": "Justified gaps", "tab_field": "By field", "tab_all": "All",
+        "tab_inv": "True anomaly", "tab_just": "Justified gaps", "tab_field": "By field", "tab_all": "All",
         "tab_gloss": "Glossary", "tab_set": "Settings",
         "f_field": "Filter by field", "f_emp": "Filter by employee ID",
         "prio_help": "Score 0-100: field severity ({g:.0%}), confidence ({c:.0%}), field recurrence ({r:.0%}). Adjustable in Settings.",
@@ -143,7 +149,13 @@ TR = {
         "w_norm": "Effective weights after normalisation: severity {g:.0%} · confidence {c:.0%} · recurrence {r:.0%}",
         "sev_title": "Severity by variable", "sev_intro": "Coefficient from 0 to 1 per field (1 = highest priority). Edit directly in the table.",
         "sev_col": "Severity (0-1)", "reset": "Restore default values",
-        "cols": {"Priorité": "Priority", "Matricule": "Employee ID", "Champ": "Field", "ValeurSourceA": "System A value",
+        "todo_title": "To do", "scope": "Data to investigate", "todo_n": "Rows to investigate", "todo_left": "Remaining",
+        "seuil": "Minimum confidence threshold", "seuil_help": "Below this threshold, human validation is required.",
+        "todo_cap": "To investigate: all errors and review cases, plus AI-justified gaps whose confidence is below the threshold.",
+        "progress": "{d} verified out of {n}", "next_title": "First rows to check", "all_done": "Everything is verified.",
+        "ver_help": "Tick once the row has been checked. Ticked automatically (grey cell) when confidence reaches the threshold.",
+        "mark": "Mark as verified", "opened": "Row opened in \"Investigate the data\" below.", "ver_col": "Verified",
+        "cols": {"Vérifié": "Verified", "Priorité": "Priority", "Matricule": "Employee ID", "Champ": "Field", "ValeurSourceA": "System A value",
                  "ValeurDestB": "System B value", "Statut": "Status", "Source_verdict": "Decided by",
                  "Confiance": "Confidence", "Cause_probable": "Probable cause", "Règle": "Rule",
                  "Explication": "Explanation", "CodeEmploi": "Job code", "TypeAffectation": "Assignment type"},
@@ -189,7 +201,7 @@ def dot(statut):
     return f":{NAMED[statut]}[●]"
 
 
-def styled(d):
+def styled(d, highlight=None):
     """DataFrame avec la colonne Statut affichée « ● Libellé » dans la couleur du verdict."""
     fmt = {"Statut": lambda v: f"● {LABEL.get(v, v)}"}
     if "Confiance" in d.columns:
@@ -197,14 +209,17 @@ def styled(d):
     if "Source_verdict" in d.columns:
         fmt["Source_verdict"] = lambda v: TR[lang]["src"].get(v, v)
     s = d.style.format(fmt)
-    return s.map(lambda v: f"color: {HEX[v]}; font-weight: 600" if v in HEX else "", subset=["Statut"])
+    s = s.map(lambda v: f"color: {HEX[v]}; font-weight: 600" if v in HEX else "", subset=["Statut"])
+    if highlight is not None:
+        s = s.apply(lambda r: ["background-color: rgba(255, 193, 7, .35)" if r.name == highlight else "" for _ in r], axis=1)
+    return s
 
 
-def show(d, **cfg):
+def show(d, highlight=None, **cfg):
     """Tableau stylé avec en-têtes traduits ; cfg = configuration de colonnes supplémentaire."""
     conf = {c: st.column_config.Column(n) for c, n in TR[lang]["cols"].items() if c in d.columns}
     conf.update(cfg)
-    st.dataframe(styled(d), width="stretch", hide_index=True, column_config=conf)
+    st.dataframe(styled(d, highlight), width="stretch", hide_index=True, column_config=conf)
 
 
 COLS = ["Priorité", "Matricule", "Champ", "ValeurSourceA", "ValeurDestB", "Statut", "Source_verdict", "Confiance", "Cause_probable"]
@@ -296,6 +311,55 @@ df = df.assign(Priorité=ia.priorite(df, weights, sev_user))
 wsum = sum(weights.values()) or 1.0
 wn = {k: v / wsum for k, v in weights.items()}
 
+# lignes à faire : erreurs / revue + écarts justifiés par l'IA dont la confiance est sous le seuil réglable
+seuil = st.session_state.get("seuil", 95) / 100
+vstate = st.session_state.setdefault("vstate", {})  # clé de ligne -> vérifié (True/False) choisi à la main
+
+
+def vkey(r):
+    return f"{r.Matricule}|{r.Champ}|{r.TypeAffectation}|{r.ValeurSourceA}|{r.ValeurDestB}"
+
+
+scope = st.session_state.get("scope", ["ERREUR", "ECART_JUSTIFIE"])  # catégories choisies dans « À faire »
+a_faire = df[(df.Statut.isin(["ERREUR", "A_REVUE_HUMAINE"]) & ("ERREUR" in scope))
+             | ((df.Statut == "ECART_JUSTIFIE") & (df.Source_verdict == "IA") & (df.Confiance.astype(float) < seuil)
+                & ("ECART_JUSTIFIE" in scope))]
+a_faire = a_faire.sort_values(["Priorité", "Confiance"], ascending=[False, True])
+
+
+def auto_ok(r):
+    """Écart justifié dont la confiance atteint le seuil : pré-vérifié automatiquement."""
+    return r.Statut == "ECART_JUSTIFIE" and float(r.Confiance) >= seuil
+
+
+def is_ok(r):
+    return vstate.get(vkey(r), auto_ok(r))
+
+
+fait = pd.Series([is_ok(r) for r in a_faire.itertuples()], index=a_faire.index, dtype=bool)
+
+
+def editor(d, key, highlight=None, **cfg):
+    """Tableau avec la colonne « Vérifié » en premier, cochable ; cellule grise = pré-cochée automatiquement."""
+    rows = df.loc[d.index]
+    auto = {i: auto_ok(r) and vkey(r) not in vstate for i, r in zip(rows.index, rows.itertuples())}
+    shown = d.copy()
+    shown.insert(0, "Vérifié", [is_ok(r) for r in rows.itertuples()])
+    conf = {c: st.column_config.Column(n) for c, n in TR[lang]["cols"].items() if c in shown.columns}
+    conf["Vérifié"] = st.column_config.CheckboxColumn(TR[lang]["cols"].get("Vérifié", "Vérifié"), help=t("ver_help"), width="small")
+    conf.update(cfg)
+    sty = styled(shown, highlight).apply(
+        lambda c: ["background-color: rgba(128, 128, 128, .40)" if auto.get(i) else "" for i in c.index], subset=["Vérifié"])
+    edited = st.data_editor(sty, hide_index=True, width="stretch", column_config=conf,
+                            disabled=[c for c in shown.columns if c != "Vérifié"],
+                            key=f"{key}_{st.session_state.get('edit_v', 0)}")
+    changed = edited.index[edited["Vérifié"].values != shown["Vérifié"].values]
+    if len(changed):
+        for i in changed:
+            vstate[vkey(df.loc[i])] = bool(edited.at[i, "Vérifié"])
+        st.session_state.edit_v = st.session_state.get("edit_v", 0) + 1
+        st.rerun()
+
 # ------------------------------------------------------------------ dashboard
 ORDER = ["OK", "ECART_JUSTIFIE", "ERREUR", "A_REVUE_HUMAINE"]
 c = df.Statut.value_counts()
@@ -367,6 +431,40 @@ def csv_bytes(d):  # séparateur ; et BOM UTF-8 : s'ouvre correctement dans Exce
     return d.drop(columns=["RefAlt", "Nature"], errors="ignore").to_csv(index=False, sep=";").encode("utf-8-sig")
 
 
+def open_row(i):
+    """Ouvre la ligne i dans « Investiguer les données » (filtres effacés, ligne sélectionnée et surlignée)."""
+    if df.loc[i].Statut == "ECART_JUSTIFIE":
+        st.session_state.hl_just = i
+    else:
+        st.session_state.f_champs, st.session_state.f_mats = [], []
+        st.session_state.pick_row = i
+    st.toast(t("opened"))
+
+
+section(t("todo_title"))
+with st.container(border=True):
+    g2, d2_ = st.columns(2, gap="large")
+    with g2:
+        nb, nr = len(a_faire), int((~fait).sum())
+        m1, m2 = st.columns(2)
+        m1.metric(t("todo_n"), nb)
+        m2.metric(t("todo_left"), nr)
+        st.pills(t("scope"), ["ERREUR", "ECART_JUSTIFIE"], selection_mode="multi", default=["ERREUR", "ECART_JUSTIFIE"],
+                 format_func=LABEL.get, key="scope")
+        st.slider(t("seuil"), 50, 100, 95, 1, format="%d %%", key="seuil", help=t("seuil_help"))
+        st.progress((nb - nr) / nb if nb else 1.0, text=t("progress", d=nb - nr, n=nb))
+        st.caption(t("todo_cap"))
+    with d2_:
+        st.markdown(f"**{t('next_title')}**")
+        restantes = a_faire[~fait]
+        if restantes.empty:
+            st.success(t("all_done"))
+        for i, r in restantes.head(5).iterrows():
+            conf_txt = f" · {r.Confiance:.0%}" if r.Source_verdict == "IA" else ""
+            st.button(f"{dot(r.Statut)} {r.Champ} · {r.Matricule} · {r.Priorité}/100{conf_txt}", key=f"todo_{i}",
+                      on_click=open_row, args=(i,), width="stretch")
+
+
 section(t("investigate"))
 with st.container(border=True):
     d1, d2, d3, d4 = st.columns(4)
@@ -384,29 +482,37 @@ with st.container(border=True):
                                                   t("tab_field"), t("tab_all"), t("tab_gloss"), t("tab_set")])
 
     with tab1:
-        err = a_investiguer
+        err = a_faire[a_faire.Statut.isin(["ERREUR", "A_REVUE_HUMAINE"])]
         if err.empty:
             st.success(t("no_err"))
         else:
             f1, f2 = st.columns(2)
-            champs = f1.multiselect(t("f_field"), sorted(err.Champ.unique()))
-            mats = f2.multiselect(t("f_emp"), sorted(err.Matricule.unique()))
+            champs = f1.multiselect(t("f_field"), sorted(err.Champ.unique()), key="f_champs")
+            mats = f2.multiselect(t("f_emp"), sorted(err.Matricule.unique()), key="f_mats")
             if champs:
                 err = err[err.Champ.isin(champs)]
             if mats:
                 err = err[err.Matricule.isin(mats)]
-            show(err[COLS], Priorité=st.column_config.ProgressColumn(
+            editor(err[COLS], "ed_inv", highlight=st.session_state.get("pick_row"), Priorité=st.column_config.ProgressColumn(
                 TR[lang]["cols"].get("Priorité", "Priorité"), min_value=0, max_value=100, format="%d / 100",
                 help=t("prio_help", g=wn["gravite"], c=wn["confiance"], r=wn["recurrence"])))
 
             st.subheader(t("why"))
             if len(err):
-                i = st.selectbox(t("pick"), err.index, format_func=lambda i:
+                if st.session_state.get("pick_row") not in err.index:
+                    st.session_state.pop("pick_row", None)
+                i = st.selectbox(t("pick"), err.index, key="pick_row", format_func=lambda i:
                                  t("row", m=err.Matricule[i], c=err.Champ[i], p=err.Priorité[i]))
                 r = df.loc[i]
                 a, b = st.columns(2)
                 a.metric(t("val_a"), r.ValeurSourceA)
                 b.metric(t("val_b"), r.ValeurDestB)
+                vk = vkey(r)
+                est_fait = is_ok(r)
+                if st.checkbox(t("mark"), value=est_fait, key=f"chk_{i}_{est_fait}") != est_fait:
+                    vstate[vk] = not est_fait
+                    st.session_state.edit_v = st.session_state.get("edit_v", 0) + 1
+                    st.rerun()
                 st.markdown(t("verdict_line", d=dot(r.Statut), l=LABEL[r.Statut],
                               o=TR[lang]["src"].get(r.Source_verdict, r.Source_verdict), c=r.Confiance))
                 st.markdown(t("rule_line", x=r.Règle))
@@ -431,13 +537,15 @@ with st.container(border=True):
                 if st.button(t("save_corr")):
                     with open(ia.BASE / "corrections.csv", "a", encoding="utf-8") as f:
                         f.write(f"{r.Matricule},{r.Champ},{v}\n")
+                    vstate[vk] = True
                     st.session_state.ver += 1
                     st.rerun()
 
     with tab2:
-        just = df[df.Statut == "ECART_JUSTIFIE"]
+        just = df[df.Statut == "ECART_JUSTIFIE"].sort_values("Confiance", kind="stable")
         st.caption(t("just_cap"))
-        show(just[COLS[1:6] + ["Source_verdict", "Confiance", "Règle", "Explication"]])
+        editor(just[COLS[1:6] + ["Source_verdict", "Confiance", "Règle", "Explication"]], "ed_just",
+               highlight=st.session_state.get("hl_just"))
 
     with tab3:
         res = (df.groupby(["Champ", "Statut"]).size().unstack(fill_value=0)
