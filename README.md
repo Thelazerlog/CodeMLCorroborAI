@@ -23,13 +23,20 @@ corrections.csv   retours d'experts            outputs/  rapports et cache LLM g
 1. **Règles déterministes** (`corroboria.py`) : appliquent le `Mapping.xlsx` champ par champ (accents, courriel, type de contrat, affectation, situation d'emploi via la table des motifs, heures, dates). Verdict `Source_verdict = règle`.
 2. **IA locale** (`ia.py`) : sur les écarts *ambigus* (courriel, libellé de rôle, heures sans valeur source), un RandomForest scikit-learn estime P(erreur). Si 0,35 < P < 0,65 → `A_REVUE_HUMAINE`. Verdict `Source_verdict = IA`, avec les facteurs utilisés.
 3. **LLM local** (`llm.py`, Ollama, `qwen2.5:3b`) : rédige en français (2 phrases : constat + « À vérifier : ») la justification d'une erreur **à la demande**, via le bouton « Expliquer » de l'app (≈ 30-60 s sans GPU). Il ne change **jamais** un verdict. Réponses mises en cache (`outputs/llm_cache.json`) ; repli sur le gabarit si Ollama est absent. Tout reste sur la machine.
-4. **Priorisation** : score 0-100 (gravité du champ, confiance, nombre de cas similaires) et `Cause_probable` (ex. « B contient toujours 40 : valeur par défaut »).
+4. **Priorisation** : score 0-100 = gravité du champ (60 %) + confiance (25 %) + récurrence du champ (15 %), poids normalisés (`ia.priorite`, `ia.WEIGHTS`, `ia.SEVERITY`), et `Cause_probable` (ex. « B contient toujours 40 : valeur par défaut »).
+
+## Application
+- **En-tête** : logo, titre (CorroborIA / CorroborAI en anglais), interrupteur de langue FR/EN, logo Loto-Québec.
+- **Tableau de bord** : anneau interactif (conforme / écart justifié / vraie anomalie / à revue humaine) et indicateurs clés, dont la confiance générale du modèle (IA + vraies anomalies).
+- **À faire** : lignes à investiguer (catégories au choix : vraie anomalie, écarts justifiés), seuil de confiance réglable (sous le seuil : validation humaine), barre de progression et premières lignes à vérifier ; un clic ouvre la ligne en surbrillance dans le tableau.
+- **Investiguer les données** : exports et onglets Vraie anomalie, Écarts justifiés (colonne « Vérifié » cochable, pré-cochée en gris au-dessus du seuil), Par champ, Tout, Glossaire, **Paramètres** (poids du score de priorité et gravité par variable, modifiables).
+- Les réglages et les lignes vérifiées ne sont conservés que pendant la session.
 
 ## Exports
-Excel + CSV (séparateur `;`, UTF-8 avec BOM) : tout, erreurs seules, justifiés. Onglet **Glossaire** dans l'app (champs lus dans `Mapping.xlsx` + codes).
+Excel + CSV (séparateur `;`, UTF-8 avec BOM) : tout, vraies anomalies seules, justifiés. Le score de priorité exporté suit les poids réglés dans l'onglet Paramètres. Onglet **Glossaire** dans l'app (champs lus dans `Mapping.xlsx` + codes).
 
 ## Rapport (`outputs/rapport_corroboration.xlsx`)
-Onglets : Erreurs à investiguer, À revue humaine, Écarts justifiés, Résumé par champ, Détail complet. Chaque ligne porte la règle appliquée, le verdict, l'origine (règle / IA / expert), la confiance et l'explication.
+Onglets : Erreurs à investiguer (vraies anomalies), À revue humaine, Écarts justifiés, Résumé par champ, Détail complet. Chaque ligne porte la règle appliquée, le verdict, l'origine (règle / IA / expert), la confiance et l'explication.
 
 ## Retour d'expert
 `corrections.csv` (Matricule, Champ, Verdict) : relu à chaque exécution, prime sur tout verdict et enrichit l'entraînement (poids x20). Modifiable aussi depuis l'app.

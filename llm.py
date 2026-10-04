@@ -7,6 +7,9 @@ l'explication par gabarit. Aucune donnée ne quitte la machine (localhost unique
 import hashlib
 import json
 import os
+import shutil
+import subprocess
+import sys
 import urllib.request
 from pathlib import Path
 
@@ -43,6 +46,37 @@ def installed_models():
         return []
 
 
+def gpu_info():
+    """GPU NVIDIA détectés via nvidia-smi (Windows et Linux) : liste de « nom (mémoire) », vide s'il n'y en a pas."""
+    exe = shutil.which("nvidia-smi") or next((p for p in (
+        r"C:\Windows\System32\nvidia-smi.exe", r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe",
+        "/usr/bin/nvidia-smi", "/usr/local/nvidia/bin/nvidia-smi") if os.path.exists(p)), None)
+    if not exe:
+        return []
+    try:
+        out = subprocess.run([exe, "--query-gpu=name,memory.total", "--format=csv,noheader"], capture_output=True,
+                             text=True, timeout=5, creationflags=0x08000000 if sys.platform == "win32" else 0)
+        gpus = []
+        for line in out.stdout.strip().splitlines():
+            name, _, mem = line.partition(",")
+            gpus.append(f"{name.strip()} ({mem.strip()})" if mem else name.strip())
+        return gpus if out.returncode == 0 else []
+    except Exception:
+        return []
+
+
+def processor(model=None):
+    """« GPU » ou « CPU » si le modèle est chargé en mémoire dans Ollama, sinon None (d'après /api/ps)."""
+    try:
+        with urllib.request.urlopen(f"{HOST}/api/ps", timeout=2) as r:
+            for m in json.load(r).get("models", []):
+                if m.get("name") == (model or MODEL):
+                    return "GPU" if m.get("size_vram", 0) > 0 else "CPU"
+    except Exception:
+        pass
+    return None
+
+
 def available(model=None):
     return (model or MODEL) in installed_models()
 
@@ -62,8 +96,10 @@ def _prompt(row):
             f"Cause probable : {row.get('Cause_probable') or 'aucune'}")
 
 
-def explain_row(row, model=None):
-    """Explication LLM d'UNE ligne du rapport (appel à la demande, mis en cache). None si indisponible."""
+def explain_row(row, model=None, device="auto"):
+    """Explication LLM d'UNE ligne du rapport (appel à la demande, mis en cache). None si indisponible.
+
+    device = "auto" : Ollama utilise le GPU NVIDIA s'il y en a un (sinon le CPU) ; "cpu" : force le CPU (num_gpu = 0)."""
     model = model or MODEL
     prompt = _prompt(row)
     key = hashlib.sha1((model + SYSTEM + prompt).encode("utf-8")).hexdigest()
@@ -73,7 +109,7 @@ def explain_row(row, model=None):
     try:
         req = urllib.request.Request(
             f"{HOST}/api/chat", method="POST", headers={"Content-Type": "application/json"},
-            data=json.dumps({"model": model, "stream": False, "options": {"temperature": 0, "num_predict": 110},
+            data=json.dumps({"model": model, "stream": False, "options": {"temperature": 0, "num_predict": 110, **({"num_gpu": 0} if device == "cpu" else {})},
                              "messages": [{"role": "system", "content": SYSTEM},
                                           {"role": "user", "content": prompt}]}).encode("utf-8"))
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:

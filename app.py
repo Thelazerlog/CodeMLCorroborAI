@@ -66,7 +66,7 @@ TR = {
         "k_conc": "Concernés", "k_conc_h": "Employés ayant au moins une erreur ou un cas à revoir.",
         "no_err": "Aucune erreur à investiguer.",
         "top1": "**Priorité n°1** : `{c}`, employé {m} ({p}/100)", "top_field": "**Champ le plus touché** : `{c}` ({n} cas)",
-        "by_ai": "**Écarts tranchés par l'IA** : {a} sur {b} (confiance générale du modèle : **{c}**)",
+        "by_ai": "**Écarts tranchés par l'IA** : {a} (confiance générale du modèle : **{c}**)",
         "dl_xlsx": "Rapport Excel", "dl_all": "CSV – tout", "dl_err": "CSV – à investiguer", "dl_just": "CSV – justifiés",
         "tab_inv": "Vraie anomalie", "tab_just": "Écarts justifiés", "tab_field": "Par champ", "tab_all": "Tout",
         "tab_gloss": "Glossaire", "tab_set": "Paramètres",
@@ -92,6 +92,9 @@ TR = {
         "w_norm": "Poids effectifs après normalisation : gravité {g:.0%} · confiance {c:.0%} · récurrence {r:.0%}",
         "sev_title": "Gravité par variable", "sev_intro": "Coefficient de 0 à 1 par champ (1 = le plus prioritaire). Modifie directement dans le tableau.",
         "sev_col": "Gravité (0-1)", "reset": "Rétablir les valeurs par défaut",
+        "hist_title": "Confiance du modèle", "cause_title": "Cause probable", "emp_title": "Employé", "others": "Autres", "unspecified": "Non précisée",
+        "conf_axis": "Confiance", "gpu_found": "GPU NVIDIA détecté : {g}", "gpu_none": "Aucun GPU NVIDIA détecté : calcul sur CPU.",
+        "device": "Calcul", "dev_auto": "Automatique (GPU si disponible)", "dev_cpu": "CPU seulement", "on_proc": "Modèle chargé sur : {p}",
         "todo_title": "À faire", "scope": "Données à investiguer", "todo_n": "Lignes à investiguer", "todo_left": "Restantes",
         "seuil": "Seuil de confiance minimal", "seuil_help": "En dessous de ce seuil, une validation humaine est nécessaire.",
         "todo_cap": "À investiguer : toutes les erreurs et cas à revoir, plus les écarts justifiés par l'IA dont la confiance est sous le seuil.",
@@ -123,7 +126,7 @@ TR = {
         "k_conc": "Affected", "k_conc_h": "Employees with at least one error or case to review.",
         "no_err": "No error to investigate.",
         "top1": "**Top priority**: `{c}`, employee {m} ({p}/100)", "top_field": "**Most affected field**: `{c}` ({n} cases)",
-        "by_ai": "**Gaps decided by AI**: {a} out of {b} (overall model confidence: **{c}**)",
+        "by_ai": "**Gaps decided by AI**: {a} (overall model confidence: **{c}**)",
         "dl_xlsx": "Excel report", "dl_all": "CSV – all", "dl_err": "CSV – to investigate", "dl_just": "CSV – justified",
         "tab_inv": "True anomaly", "tab_just": "Justified gaps", "tab_field": "By field", "tab_all": "All",
         "tab_gloss": "Glossary", "tab_set": "Settings",
@@ -149,6 +152,9 @@ TR = {
         "w_norm": "Effective weights after normalisation: severity {g:.0%} · confidence {c:.0%} · recurrence {r:.0%}",
         "sev_title": "Severity by variable", "sev_intro": "Coefficient from 0 to 1 per field (1 = highest priority). Edit directly in the table.",
         "sev_col": "Severity (0-1)", "reset": "Restore default values",
+        "hist_title": "Model confidence", "cause_title": "Probable cause", "emp_title": "Employee", "others": "Others", "unspecified": "Unspecified",
+        "conf_axis": "Confidence", "gpu_found": "NVIDIA GPU detected: {g}", "gpu_none": "No NVIDIA GPU detected: running on CPU.",
+        "device": "Compute", "dev_auto": "Automatic (GPU if available)", "dev_cpu": "CPU only", "on_proc": "Model loaded on: {p}",
         "todo_title": "To do", "scope": "Data to investigate", "todo_n": "Rows to investigate", "todo_left": "Remaining",
         "seuil": "Minimum confidence threshold", "seuil_help": "Below this threshold, human validation is required.",
         "todo_cap": "To investigate: all errors and review cases, plus AI-justified gaps whose confidence is below the threshold.",
@@ -224,6 +230,11 @@ def show(d, highlight=None, **cfg):
 
 COLS = ["Priorité", "Matricule", "Champ", "ValeurSourceA", "ValeurDestB", "Statut", "Source_verdict", "Confiance", "Cause_probable"]
 
+@st.cache_data(ttl=120, show_spinner=False)
+def gpu_list():
+    return llm.gpu_info()
+
+
 # ------------------------------------------------------------------ barre latérale
 with st.sidebar:
     if LOGO_LQ:
@@ -243,6 +254,13 @@ with st.sidebar:
     labels = {m: f"{name} ({m})" + ("" if m in present else t("not_installed")) for name, m, _ in llm.PROFILES}
     model = st.selectbox(t("llm_model"), [m for _, m, _ in llm.PROFILES], format_func=labels.get, help=t("llm_help"))
     llm_ok = model in present
+    gpus = gpu_list()
+    st.caption(t("gpu_found", g=" ; ".join(gpus)) if gpus else t("gpu_none"))
+    device = st.radio(t("device"), ["auto", "cpu"], horizontal=True, key="device", disabled=not gpus,
+                      format_func=lambda d: t("dev_auto") if d == "auto" else t("dev_cpu"))
+    proc = llm.processor(model)
+    if proc:
+        st.caption(t("on_proc", p=proc))
     st.caption(dict((m, n) for _, m, n in llm.PROFILES)[model])
     if not present:
         st.caption(t("ollama_off"))
@@ -420,11 +438,78 @@ with st.container(border=True):
             top = a_investiguer.iloc[0]
             vc = a_investiguer.Champ.value_counts()
             par_ia = int((df[df.Statut != "OK"].Source_verdict == "IA").sum())
-            ia_rows = df[df.Source_verdict == "IA"]
+            ia_rows = df[(df.Source_verdict == "IA") | df.Statut.isin(["ERREUR", "A_REVUE_HUMAINE"])]  # IA + vraies anomalies
             conf = f"{ia_rows.Confiance.astype(float).mean():.0%}" if len(ia_rows) else "n/a"
             st.markdown(t("top1", c=top.Champ, m=top.Matricule, p=top.Priorité) + "  \n"
                         + t("top_field", c=vc.index[0], n=int(vc.iloc[0])) + "  \n"
                         + t("by_ai", a=par_ia, b=total - n["OK"], c=conf))
+
+
+PALETTE = ["#1c5b8c", "#479ea0", "#8cc4b8", "#f2a65a", "#b56576", "#6a994e", "#9aa5b1"]
+ROUGE, ORANGE = HEX["ERREUR"], "#f08c00"
+
+
+def histogram():
+    """Scores de confiance (lignes tranchées par l'IA + vraies anomalies), empilés : rouge = vraie anomalie, orange = écart justifié."""
+    d = df[(df.Source_verdict == "IA") | df.Statut.isin(["ERREUR", "A_REVUE_HUMAINE"])]
+    d = d[d.Statut.isin(["ERREUR", "ECART_JUSTIFIE"])].assign(Verdict=lambda x: x.Statut.map(LABEL),
+                                                               Confiance=lambda x: x.Confiance.astype(float))
+    dom = [LABEL["ERREUR"], LABEL["ECART_JUSTIFIE"]]
+    return (alt.Chart(d).mark_bar(stroke="white", strokeWidth=0.5)
+            .encode(x=alt.X("Confiance:Q", bin=alt.Bin(extent=[0.5, 1.05], step=0.025), title=t("conf_axis"),
+                            axis=alt.Axis(format=".0%", labelFontSize=10, titleFontSize=11)),
+                    y=alt.Y("count():Q", title=None, axis=alt.Axis(labelFontSize=10)),
+                    color=alt.Color("Verdict:N", scale=alt.Scale(domain=dom, range=[ROUGE, ORANGE]),
+                                    legend=alt.Legend(orient="top-left", title=None, symbolType="circle", labelFontSize=11,
+                                                      fillColor="rgba(0,0,0,0)", padding=0)),
+                    tooltip=["Verdict:N", alt.Tooltip("count():Q", title=t("count"))])
+            .properties(height=176, padding={"top": 6, "bottom": 6, "left": 4, "right": 4}))
+
+
+def pie(serie, hauteur=134):
+    """Camembert des modalités les plus fréquentes (le reste regroupé dans « Autres »)."""
+    vc = serie.value_counts()
+    if len(vc) > 4:
+        vc = pd.concat([vc.head(3), pd.Series({t("others"): int(vc.iloc[3:].sum())})])
+    data = pd.DataFrame({"Libellé": [str(i) for i in vc.index], t("count"): vc.values})
+    hover = alt.selection_point(fields=["Libellé"], on="pointerover", clear="pointerout")
+    return (alt.Chart(data).mark_arc(innerRadius=0, outerRadius=62, stroke="white", strokeWidth=1)
+            .encode(theta=alt.Theta(f"{t('count')}:Q", stack=True),
+                    color=alt.Color("Libellé:N", sort=list(data["Libellé"]), scale=alt.Scale(range=PALETTE),
+                                    legend=alt.Legend(orient="right", title=None, symbolType="circle", labelFontSize=10,
+                                                      labelLimit=92, rowPadding=0, symbolSize=40)),
+                    opacity=alt.condition(hover, alt.value(1), alt.value(0.45)),
+                    tooltip=["Libellé:N", f"{t('count')}:Q"])
+            .add_params(hover)
+            .properties(height=hauteur, padding={"top": 6, "bottom": 6, "left": 4, "right": 4}))
+
+
+def valeur(cle):
+    """Choix courant de l'interrupteur (lu avant son affichage, car il est placé sous le graphique)."""
+    return st.session_state.get(cle) or "ERREUR"
+
+
+def choix(cle):
+    """Interrupteur Vraie anomalie / Écarts justifiés (par défaut : vraie anomalie)."""
+    st.segmented_control("-", ["ERREUR", "ECART_JUSTIFIE"], default="ERREUR", key=cle, format_func=lambda s: LABEL[s],
+                         label_visibility="collapsed")
+
+
+with st.container(border=True):
+    h1c, h2c, h3c = st.columns(3, gap="large")
+    with h1c:
+        st.markdown(f"**{t('hist_title')}**")
+        st.altair_chart(histogram(), width="stretch")
+    with h2c:
+        st.markdown(f"**{t('cause_title')}**")
+        x = df[df.Statut == valeur("pie_cause")]
+        cause = x.Cause_probable.where(x.Cause_probable.astype(bool), x.Règle).replace("", t("unspecified"))
+        st.altair_chart(pie(cause), width="stretch")
+        choix("pie_cause")
+    with h3c:
+        st.markdown(f"**{t('emp_title')}**")
+        st.altair_chart(pie(df[df.Statut == valeur("pie_emp")].Matricule.astype(str)), width="stretch")
+        choix("pie_emp")
 
 
 def csv_bytes(d):  # séparateur ; et BOM UTF-8 : s'ouvre correctement dans Excel en français
@@ -522,7 +607,7 @@ with st.container(border=True):
                     st.session_state[key] = llm.cached(r, model)
                 if st.button(t("btn_llm", m=model), disabled=not llm_ok, help=t("btn_llm_h")):
                     with st.spinner(t("llm_spin")):
-                        st.session_state[key] = llm.explain_row(r, model)
+                        st.session_state[key] = llm.explain_row(r, model, device if gpus else "auto")
                     if st.session_state[key] is None:
                         st.warning(t("llm_none"))
                 if st.session_state.get(key):
