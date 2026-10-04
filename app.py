@@ -12,6 +12,7 @@ from PIL import Image, ImageChops
 
 import corroboria
 import ia
+import assistant
 import llm
 import retours
 
@@ -124,6 +125,13 @@ TR = {
         "cor_effet": "Effet des retours d'experts", "cor_mesurer": "Mesurer l'effet",
         "cor_m1": "Lignes corrigées par un expert", "cor_m2": "Verdicts changés par les règles apprises",
         "cor_m3": "Verdicts du modèle changés (entraînement)", "cor_m4": "Verdicts changés au total",
+        "flt_champ": "Champ", "chat_titre": "Assistant", "chat_ph": "Pose une question (ex. « combien d'anomalies ? »)",
+        "chat_bulle": "Assistant : questions courantes et pilotage du tableau",
+        "chat_sug": ["Résumé", "Combien d'anomalies ?", "Quel employé a le plus d'anomalies ?", "Aide"],
+        "chat_hello": "Bonjour ! Je réponds aux questions courantes et je pilote le tableau. Dis « aide » pour des exemples.",
+        "gloss_motifs": "Motifs de la situation d'emploi", "gloss_motifs_cap": "Table fournie : code de gestion des accès associé à chaque catégorie de statut (00/01 = actif ; 02, 03, 06, 07 = absence complète).",
+        "gloss_rules": "Règles appliquées", "gloss_rules_cap": "Chaque contrôle de l'analyse relève d'une règle du mapping (déterministe) ou d'un cas ambigu confié à l'IA.",
+        "nat_rule": "règle déterministe", "nat_ai": "cas ambigu (IA)", "nature": "Nature", "n_checks": "Contrôles", "n_ok": "Conformes", "n_gaps": "Écarts",
         "todo_title": "À faire", "scope": "Données à investiguer", "todo_n": "Lignes à investiguer", "todo_left": "Restantes",
         "seuil": "Seuil de confiance minimal", "seuil_help": "En dessous de ce seuil, une validation humaine est nécessaire.",
         "todo_cap": "À investiguer : toutes les erreurs et cas à revoir, plus les écarts justifiés par l'IA dont la confiance est sous le seuil.",
@@ -211,6 +219,13 @@ TR = {
         "cor_effet": "Effect of expert feedback", "cor_mesurer": "Measure the effect",
         "cor_m1": "Rows corrected by an expert", "cor_m2": "Verdicts changed by learned rules",
         "cor_m3": "Model verdicts changed (training)", "cor_m4": "Verdicts changed in total",
+        "flt_champ": "Field", "chat_titre": "Assistant", "chat_ph": "Ask a question (e.g. \"how many anomalies?\")",
+        "chat_bulle": "Assistant: common questions and table control",
+        "chat_sug": ["Summary", "How many anomalies?", "Which employee has the most anomalies?", "Help"],
+        "chat_hello": "Hello! I answer common questions and drive the table. Say \"help\" for examples.",
+        "gloss_motifs": "Employment status reasons", "gloss_motifs_cap": "Provided table: access management code for each status category (00/01 = active; 02, 03, 06, 07 = full absence).",
+        "gloss_rules": "Rules applied", "gloss_rules_cap": "Each check comes from a mapping rule (deterministic) or an ambiguous case handled by the AI.",
+        "nat_rule": "deterministic rule", "nat_ai": "ambiguous case (AI)", "nature": "Nature", "n_checks": "Checks", "n_ok": "Compliant", "n_gaps": "Gaps",
         "todo_title": "To do", "scope": "Data to investigate", "todo_n": "Rows to investigate", "todo_left": "Remaining",
         "seuil": "Minimum confidence threshold", "seuil_help": "Below this threshold, human validation is required.",
         "todo_cap": "To investigate: all errors and review cases, plus AI-justified gaps whose confidence is below the threshold.",
@@ -317,7 +332,7 @@ with st.sidebar:
         st.image(trimmed(LOGO_LQ), width=170)
     st.header(t("data"))
     st.caption(t("data_cap"))
-    ups = {k: st.file_uploader(t(lbl), type="xlsx", key=k) for k, lbl in [
+    ups = {k: st.file_uploader(t(lbl), type=["xlsx", "csv"], key=k) for k, lbl in [
         ("source", "up_source"), ("destination", "up_dest"), ("detail", "up_detail"), ("motif", "up_motif")]}
     files = {k: v for k, v in ups.items() if v is not None}
     if "ver" not in st.session_state:
@@ -340,7 +355,7 @@ with st.sidebar:
 
 @st.cache_data(show_spinner=False)
 def compute(ver, names, _files):
-    return ia.enrich(corroboria.run(_files or None))
+    return ia.enrich(corroboria.run(_files or None), exporter_modele=True)
 
 
 def data_uri(path):
@@ -449,6 +464,7 @@ def reset_filtres():
     """Efface les filtres des listes déroulantes et la sélection faite en cliquant sur les camemberts."""
     st.session_state.flt_cause = None
     st.session_state.flt_emp = None
+    st.session_state.flt_champs = []
     st.session_state.pie_v = st.session_state.get("pie_v", 0) + 1
 
 
@@ -690,7 +706,8 @@ with st.container(border=True):
                 f'<span>{LABEL[s]} <b>{n[s]}</b></span></div>' for s in SHOWN)
             st.markdown(f'<div style="display:flex;flex-direction:column;justify-content:center">{rows}</div>',
                         unsafe_allow_html=True)
-        st.slider(t("seuil"), 0, 100, 90, 1, format="%d %%", key="seuil", help=t("seuil_help"))
+        st.session_state.setdefault("seuil", 90)
+        st.slider(t("seuil"), 0, 100, step=1, format="%d %%", key="seuil", help=t("seuil_help"))
 
     with d:
         taux = n["OK"] / max(total, 1)
@@ -826,15 +843,16 @@ with st.container(border=True):
     export, export_nom = None, "tableau"
 
     # filtres : type d'erreur (cause probable) et employé, en plus des clics sur les camemberts
-    f1, f2, f3 = st.columns([3, 2, 2], vertical_alignment="bottom")
+    f1, f1b, f2, f3 = st.columns([3, 2, 2, 2], vertical_alignment="bottom")
     causes_dispo = list(cause_serie(df[df.Statut != "OK"]).value_counts().index)
     flt_cause = f1.selectbox(t("flt_cause"), [None] + causes_dispo, key="flt_cause",
                              format_func=lambda v: t("flt_all") if v is None else v)
+    flt_champs = f1b.multiselect(t("flt_champ"), sorted(df.Champ.map(lambda c: c.split(" (")[0]).unique()), key="flt_champs")
     flt_emp = f2.selectbox(t("flt_emp"), [None] + sorted(df.Matricule.astype(str).unique()), key="flt_emp",
                            format_func=lambda v: t("flt_all") if v is None else v)
     actifs = ([f"{t('and_cause')} : {', '.join(lab_cause)}"] if lab_cause else []) \
         + ([f"{t('and_emp')} : {', '.join(lab_emp)}"] if lab_emp else []) \
-        + ([f"{t('and_cause')} : {flt_cause}"] if flt_cause else []) + ([f"{t('and_emp')} : {flt_emp}"] if flt_emp else [])
+        + ([f"{t('flt_champ')} : {', '.join(flt_champs)}"] if flt_champs else []) + ([f"{t('and_cause')} : {flt_cause}"] if flt_cause else []) + ([f"{t('and_emp')} : {flt_emp}"] if flt_emp else [])
     if actifs:  # le filtre est visible tant qu'il existe, avec un bouton pour l'enlever
         f3.button(t("flt_reset"), key="flt_reset", on_click=reset_filtres, width="stretch")
         st.markdown(f"**{t('flt_active')}** : " + " · ".join(actifs))
@@ -860,6 +878,9 @@ with st.container(border=True):
         ce = cause_serie(df[df.Statut != "OK"])
         indices.append(set(ce.index[ce == flt_cause]))
         parties.append(f"{t('and_cause')} : {flt_cause}")
+    if flt_champs:
+        indices.append(set(df.index[df.Champ.map(lambda c: c.split(" (")[0]).isin(flt_champs)]))
+        parties.append(f"{t('flt_champ')} : {', '.join(flt_champs)}")
     if flt_emp is not None:
         indices.append(set(df.index[df.Matricule.astype(str) == flt_emp]))
         parties.append(f"{t('and_emp')} : {flt_emp}")
@@ -870,14 +891,12 @@ with st.container(border=True):
     if indices:
         sel = df.loc[sorted(set.intersection(*indices))].sort_values(["Priorité", "Matricule"], ascending=[ordre == "asc", True])
         st.markdown(f"**{t('rows_of', n=len(sel), l=' · '.join(parties))}**")
-        if st.session_state.get("aide_row") not in sel.index:
-            st.session_state.pop("aide_row", None)
         tableau_lignes(sel, st.session_state.get("aide_row"))
         if st.session_state.get("statut_pending"):  # changement de statut demandé dans le tableau : confirmation
             p = st.session_state.statut_pending
             if p["id"] in df.index:
                 confirmer_statut(p["id"], p["valeur"])
-        export, export_nom = sel[COLS + ["Règle", "Explication"]], "lignes_selectionnees"
+        export, export_nom = sel[COLS + ["Règle", "Explication", "CodeEmploi", "TypeAffectation"]], "lignes_selectionnees"
 
 
     # ---- Par champ
@@ -900,6 +919,21 @@ with st.container(border=True):
         st.markdown(f"**{t('codes')}**")
         codes_gl = pd.DataFrame(corroboria.GLOSSARY_CODES, columns=[t("code"), t("meaning")])
         st.dataframe(codes_gl, width="stretch", hide_index=True)
+        st.markdown(f"**{t('gloss_motifs')}**")
+        st.caption(t("gloss_motifs_cap"))
+        try:
+            st.dataframe(corroboria.load(files or None)[2], width="stretch", hide_index=True)
+        except Exception:
+            st.caption("-")
+        st.markdown(f"**{t('gloss_rules')}**")
+        st.caption(t("gloss_rules_cap"))
+        cat = (df.assign(Règle=df.Règle.str.replace(r"\s*;\s*valeur règle = [0-9-]+\)", ")", regex=True)).groupby("Règle").agg(Nature=("Nature", "first"), Contrôles=("Statut", "size"),
+                                       Conformes=("StatutInit", lambda x: int((x == "OK").sum())),
+                                       Écarts=("StatutInit", lambda x: int((x != "OK").sum())))
+                 .reset_index().sort_values("Contrôles", ascending=False))
+        cat["Nature"] = cat["Nature"].map({"règle": t("nat_rule"), "heuristique": t("nat_ai")}).fillna(cat["Nature"])
+        st.dataframe(cat.rename(columns={"Règle": TR[lang]["cols"].get("Règle", "Règle"), "Nature": t("nature"), "Contrôles": t("n_checks"),
+                                         "Conformes": t("n_ok"), "Écarts": t("n_gaps")}), width="stretch", hide_index=True)
         if export is None:
             export, export_nom = champs_gl, "glossaire_champs"
 
@@ -921,7 +955,7 @@ with st.container(border=True):
             st.caption(t("cor_none_act"))
         for r_ in actives:
             st.markdown(t("cor_regle_txt", i=r_["id"], c=r_["champ"], fa=r_["forme_a"], fb=r_["forme_b"], v=LABEL[r_["verdict"]],
-                          n=r_["n"], a=r_["auteur"] or "?", d=r_["date"]))
+                          n=r_["n"], a=r_["auteur"] or "—", d=r_["date"]))
             st.button(t("cor_desact", i=r_["id"]), key=f"des_{r_['id']}", on_click=cb_desactiver, args=(r_["id"],))
         st.markdown(f"**{t('cor_journal')}**")
         journal = retours.lire_journal()
@@ -992,32 +1026,65 @@ with st.container(border=True):
         bouton.download_button(t("dl_cur"), csv_bytes(export), f"{export_nom}.csv", "text/csv")
 
 
-# ------------------------------------------------------------------ bandeau « Explication IA locale » (bas de page)
+# ------------------------------------------------------------------ bandeau violet (bas de page) : explication IA + assistant
+BULLE_SVG = ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'><path d='M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4v-4H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z'/>"
+             "<circle cx='8' cy='10' r='1.3' fill='%234a2d80'/><circle cx='12' cy='10' r='1.3' fill='%234a2d80'/><circle cx='16' cy='10' r='1.3' fill='%234a2d80'/></svg>")
 st.markdown("""<style>
 .st-key-bandeau_ia{position:fixed !important;left:var(--sbw,300px);right:0;bottom:0;z-index:1000;margin:0 !important;
  width:auto !important;max-width:none !important;box-sizing:border-box;padding:14px 22px 18px;
- border-radius:12px 12px 0 0;color:#fff;max-height:46vh;overflow:auto;
+ border-radius:12px 12px 0 0;color:#fff;max-height:52vh;overflow:auto;
  background:linear-gradient(135deg,#4a2d80,#8e6bbf);box-shadow:0 -4px 22px rgba(0,0,0,.45)}
-.st-key-bandeau_ia p,.st-key-bandeau_ia span,.st-key-bandeau_ia strong,.st-key-bandeau_ia em,.st-key-bandeau_ia li{color:#fff !important}
+.st-key-bandeau_ia p,.st-key-bandeau_ia span,.st-key-bandeau_ia strong,.st-key-bandeau_ia em,.st-key-bandeau_ia li,.st-key-bandeau_ia label{color:#fff !important}
 .st-key-bandeau_ia code{background:rgba(0,0,0,.35) !important;color:#fff !important;border-radius:6px;padding:1px 6px}
 .st-key-bandeau_ia button{background:rgba(255,255,255,.16) !important;border:1px solid rgba(255,255,255,.7) !important;color:#fff !important}
 .st-key-bandeau_ia button p,.st-key-bandeau_ia button span,.st-key-bandeau_ia button div{color:#fff !important}
 .st-key-bandeau_ia button:hover{background:rgba(255,255,255,.3) !important}
 .st-key-bandeau_ia a,.st-key-bandeau_ia a *{color:#fff !important;text-decoration:underline}
 .st-key-bandeau_texte a,.st-key-bandeau_texte a *{color:#4a2d80 !important}
-.st-key-bandeau_texte{background:#fff !important;border-radius:8px;padding:12px 16px;margin-top:6px}
-.st-key-bandeau_texte p,.st-key-bandeau_texte span,.st-key-bandeau_texte strong,.st-key-bandeau_texte em{color:#1b1b1f !important}
-.st-key-bandeau_texte code{background:#eceaf3 !important;color:#1b1b1f !important}
-</style>""", unsafe_allow_html=True)
+.st-key-bandeau_texte,.st-key-chat_zone{background:#fff !important;border-radius:8px;padding:12px 16px;margin-top:6px}
+.st-key-bandeau_texte p,.st-key-bandeau_texte span,.st-key-bandeau_texte strong,.st-key-bandeau_texte em,
+.st-key-chat_zone p,.st-key-chat_zone span,.st-key-chat_zone strong,.st-key-chat_zone em,.st-key-chat_zone li{color:#1b1b1f !important}
+.st-key-bandeau_texte code,.st-key-chat_zone code{background:#eceaf3 !important;color:#1b1b1f !important}
+.st-key-chat_zone{max-height:210px;overflow-y:auto}
+.st-key-chat_zone [data-testid="stChatMessage"]{background:#f6f3fc !important;border-radius:8px;margin-bottom:6px}
+.st-key-chat_zone button{background:#f1edf9 !important;border:1px solid #8e6bbf !important;color:#3b2470 !important;text-align:left;min-height:34px;padding:2px 8px;font-size:.82rem}
+.st-key-chat_zone button p,.st-key-chat_zone button span{color:#3b2470 !important}
+.st-key-chat_zone button:hover{background:#e3d9f5 !important}
+.st-key-chat_bulle{position:fixed !important;right:18px;bottom:18px;z-index:1200;width:auto !important}
+.st-key-chat_bulle button{width:56px;height:56px;border-radius:50% !important;border:0 !important;padding:0;
+ background-image:url("data:image/svg+xml,__SVG__"),linear-gradient(135deg,#4a2d80,#8e6bbf) !important;
+ background-repeat:no-repeat !important;background-position:center !important;background-size:30px,cover !important;
+ box-shadow:0 4px 16px rgba(0,0,0,.45)}
+.st-key-chat_bulle button p{display:none}
+</style>""".replace("__SVG__", BULLE_SVG), unsafe_allow_html=True)
 # largeur de la barre latérale -> variable CSS --sbw : le bandeau fixe démarre exactement à son bord
 SBW_JS = """
 export default function() {
   const sb = document.querySelector('[data-testid="stSidebar"]');
-  const set = () => document.documentElement.style.setProperty('--sbw', (sb ? sb.getBoundingClientRect().right : 0) + 'px');
+  const set = () => {
+    const root = document.documentElement, app = document.querySelector('[data-testid="stApp"]');
+    root.style.setProperty('--sbw', (sb ? sb.getBoundingClientRect().right : 0) + 'px');
+    if (app) {
+      const cs = getComputedStyle(app);
+      root.style.setProperty('--app-bg', cs.backgroundColor); root.style.setProperty('--app-fg', cs.color);
+    }
+    if (sb) root.style.setProperty('--app-bg2', getComputedStyle(sb).backgroundColor);
+  };
   set();
   const ro = new ResizeObserver(set); if (sb) ro.observe(sb);
   window.addEventListener('resize', set);
-  return () => { ro.disconnect(); window.removeEventListener('resize', set); };
+  // assistant : la zone de discussion défile jusqu'au dernier message dès qu'un message est ajouté
+  let nb = 0, plan = false;
+  const defiler = () => {
+    plan = false;
+    const z = document.querySelector('.st-key-chat_zone');
+    if (!z) { nb = 0; return; }
+    const n = z.querySelectorAll('[data-testid="stChatMessage"]').length;
+    if (n !== nb) { nb = n; z.scrollTop = z.scrollHeight; }
+  };
+  const mo = new MutationObserver(() => { if (!plan) { plan = true; requestAnimationFrame(defiler); } });
+  mo.observe(document.body, {childList: true, subtree: true});
+  return () => { ro.disconnect(); mo.disconnect(); window.removeEventListener('resize', set); };
 }"""
 
 
@@ -1027,33 +1094,116 @@ def composant_sbw(version):
 
 
 composant_sbw(hashlib.md5(SBW_JS.encode()).hexdigest()[:8])(key="sbw")
+
+
+# ---- assistant : rappels (exécutés avant le réaffichage, donc les filtres sont à jour dès la réponse)
+def accueil_chat():
+    r = assistant.repondre("aide", df, lang, {})
+    return [{"role": "assistant", "content": r["texte"], "sug": r.get("suggestions", [])}]
+
+
+def ouvrir_chat():
+    st.session_state.chat_open = True
+    if not st.session_state.get("chat"):
+        st.session_state.chat = accueil_chat()
+
+
+def basculer_chat():
+    st.session_state.chat_open = not st.session_state.get("chat_open")
+    if st.session_state.chat_open and not st.session_state.get("chat"):
+        st.session_state.chat = accueil_chat()
+
+
+def fermer_tout():
+    st.session_state.chat_open = False
+    st.session_state.pop("aide_row", None)
+
+
+def poser(question):
+    """Interprète la question, répond, et applique les actions sur les filtres avant le prochain affichage."""
+    q = (question or "").strip()
+    if not q:
+        return
+    ctx = {"restant": int((~fait).sum()), "total": len(a_faire), "effet": st.session_state.get("effet")}
+    r = assistant.repondre(q, df, lang, ctx)
+    st.session_state.chat = ((st.session_state.get("chat") or [])
+                             + [{"role": "user", "content": q},
+                                {"role": "assistant", "content": r["texte"], "sug": r.get("suggestions", [])}])[-40:]
+    a = r["actions"]
+    if a.get("reset"):
+        reset_filtres()
+        st.session_state.sel_stat = ["A_REVUE_HUMAINE"] if "A_REVUE_HUMAINE" in SHOWN else []
+    if "statuts" in a:
+        st.session_state.sel_stat = [s for s in a["statuts"] if s in SHOWN]
+        st.session_state.flt_champs = [c for c in a.get("champs", []) if c in set(df.Champ.map(lambda x: x.split(" (")[0]))]
+        st.session_state.flt_emp = a.get("employe")
+    if a.get("seuil") is not None:
+        st.session_state.seuil = int(a["seuil"])
+    if a.get("ouvrir") is not None:
+        st.session_state.aide_row = int(a["ouvrir"])
+        st.session_state.aide_pending = True
+
+
+def cb_chat():
+    poser(st.session_state.get("chat_in"))
+
+
+def zone_chat():
+    """Messages (le plus récent en bas), questions proposées cliquables sous la dernière réponse, saisie libre."""
+    msgs = st.session_state.get("chat", [])
+    with st.container(key="chat_zone"):  # ordre chronologique ; un petit script (ci-dessus) fait défiler vers le dernier message
+        for k in range(len(msgs)):
+            with st.chat_message(msgs[k]["role"]):
+                st.markdown(msgs[k]["content"])
+                if k == len(msgs) - 1:
+                    colonnes = st.columns(2)  # questions proposées en deux colonnes (bandeau moins haut)
+                    for j, s in enumerate(msgs[k].get("sug", [])):
+                        colonnes[j % 2].button(s, key=f"sug_{k}_{j}", on_click=poser, args=(s,), width="stretch")
+    st.chat_input(TR[lang]["chat_ph"], key="chat_in", on_submit=cb_chat)
+
+
 _i = st.session_state.get("aide_row")
-if _i is not None and _i in df.index:
-    st.markdown("<div style='height:230px'></div>", unsafe_allow_html=True)  # le bandeau fixe ne masque pas la fin de la page
-    r = df.loc[_i]
-    cle_llm = f"llm_{model}_{_i}"
-    texte = llm.cached(r, model) or st.session_state.get(cle_llm)
-    echec = False
+explication = _i is not None and _i in df.index
+chat_ouvert = bool(st.session_state.get("chat_open"))
+if explication or chat_ouvert:
+    st.markdown("<div style='height:300px'></div>", unsafe_allow_html=True)  # le bandeau fixe ne masque pas la fin de la page
     with st.container(key="bandeau_ia"):
-        entete, fermer = st.columns([6, 1], vertical_alignment="center")
-        cloche = icone("cloche_violette_son.png", 40)
-        entete.markdown((f'<img src="{cloche}" style="height:26px;vertical-align:middle;margin-right:8px"/>' if cloche else "")
-                        + f"**{t('ban_title')}** · `{r.Champ}` · {r.Matricule} · A : {r.ValeurSourceA} → B : {r.ValeurDestB}"
-                        f" · {dot(r.Statut)} {LABEL[r.Statut]} ({r.Confiance:.0%})", unsafe_allow_html=True)
-        fermer.button(t("ban_close"), key="aide_close", on_click=lambda: st.session_state.pop("aide_row", None), width="stretch")
-        if st.session_state.pop("aide_pending", False) and not texte:  # Ollama n'est appelé qu'après un clic sur la cloche
-            with st.spinner(t("llm_spin")):
-                texte = llm.explain_row(r, model, device if gpus else "auto")
-                st.session_state[cle_llm + "_proc"] = llm.processor(model)
-            echec = texte is None
-            if texte:
-                st.session_state[cle_llm] = texte
-        if echec:
-            st.warning(t("llm_none", m=model))
-        with st.container(key="bandeau_texte"):  # zone d'écriture blanche : texte lisible sur le fond violet
-            if texte:
-                st.markdown(texte)
-                if st.session_state.get(cle_llm + "_proc"):
-                    st.caption(t("on_proc", p=st.session_state[cle_llm + "_proc"]) + f" · {model}")
-            else:
-                st.markdown(f"{t('ban_fallback')} {r.Explication}")
+        entete, b_chat, fermer = st.columns([6, 2, 1.4], vertical_alignment="center")
+        if explication:
+            r = df.loc[_i]
+            cle_llm = f"llm_{model}_{_i}"
+            texte = llm.cached(r, model) or st.session_state.get(cle_llm)
+            echec = False
+            cloche = icone("cloche_violette_son.png", 40)
+            entete.markdown((f'<img src="{cloche}" style="height:26px;vertical-align:middle;margin-right:8px"/>' if cloche else "")
+                            + f"**{t('ban_title')}** · `{r.Champ}` · {r.Matricule} · A : {r.ValeurSourceA} → B : {r.ValeurDestB}"
+                            f" · {dot(r.Statut)} {LABEL[r.Statut]} ({r.Confiance:.0%})", unsafe_allow_html=True)
+        else:
+            entete.markdown(f"**{TR[lang]['chat_titre']}**")
+        b_chat.button(TR[lang]["chat_titre"] + (" ▾" if chat_ouvert else " ▸"), key="chat_toggle", on_click=basculer_chat, width="stretch")
+        fermer.button(t("ban_close"), key="aide_close", on_click=fermer_tout, width="stretch")
+        cols = st.columns(2, gap="medium") if (explication and chat_ouvert) else [st.container()]
+        if explication:
+            with cols[0]:
+                if st.session_state.pop("aide_pending", False) and not texte:  # Ollama n'est appelé qu'après un clic sur la cloche
+                    with st.spinner(t("llm_spin")):
+                        texte = llm.explain_row(r, model, device if gpus else "auto")
+                        st.session_state[cle_llm + "_proc"] = llm.processor(model)
+                    echec = texte is None
+                    if texte:
+                        st.session_state[cle_llm] = texte
+                if echec:
+                    st.warning(t("llm_none", m=model))
+                with st.container(key="bandeau_texte"):  # zone d'écriture blanche : texte lisible sur le fond violet
+                    if texte:
+                        st.markdown(texte)
+                        if st.session_state.get(cle_llm + "_proc"):
+                            st.caption(t("on_proc", p=st.session_state[cle_llm + "_proc"]) + f" · {model}")
+                    else:
+                        st.markdown(f"{t('ban_fallback')} {r.Explication}")
+        if chat_ouvert:
+            with cols[-1]:
+                zone_chat()
+else:
+    with st.container(key="chat_bulle"):
+        st.button(" ", key="chat_open_btn", on_click=ouvrir_chat, help=TR[lang]["chat_bulle"])

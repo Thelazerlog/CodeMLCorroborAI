@@ -4,6 +4,7 @@ Trois scénarios de référence : un cas conforme, un écart justifié, une vrai
 Les données sont fabriquées à partir d'une ligne réelle ; les fichiers fournis ne sont jamais modifiés.
 """
 import hashlib
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -252,3 +253,69 @@ def test_fichiers_sources_non_modifies():
     before = {f: hashlib.sha256(f.read_bytes()).hexdigest() for f in files}
     ia.enrich(c.run())
     assert before == {f: hashlib.sha256(f.read_bytes()).hexdigest() for f in files}
+
+
+# ------------------------------------------------------------------ robustesse : fichiers invalides, modèle exportable
+def test_fichier_invalide_message_clair(tmp_path):
+    pd.DataFrame({"a": [1]}).to_excel(tmp_path / "x.xlsx", index=False)
+    (tmp_path / "y.xlsx").write_text("pas un classeur Excel", encoding="utf-8")
+    with pytest.raises(ValueError, match="n'a pas les colonnes attendues"):
+        c.run({"source": tmp_path / "x.xlsx"})
+    with pytest.raises(ValueError, match="n'est pas un classeur Excel"):
+        c.run({"destination": tmp_path / "y.xlsx"})
+    with pytest.raises(ValueError, match="DateEffetAffectation"):
+        c.run({"detail": tmp_path / "x.xlsx"})
+
+
+def test_modele_exportable_et_reproductible(tmp_path, monkeypatch):
+    monkeypatch.setattr(ia, "BASE", tmp_path)
+    monkeypatch.setattr(retours, "JOURNAL", tmp_path / "corrections.csv")
+    monkeypatch.setattr(retours, "REGLES", tmp_path / "regles_apprises.json")
+    brut = c.run()
+    a = ia.enrich(brut, exporter_modele=True)
+    assert (tmp_path / "modele" / "modele_corroboria.joblib").exists()
+    fiche = json.loads((tmp_path / "modele" / "modele_corroboria.json").read_text(encoding="utf-8"))
+    assert fiche["classes"] == ["ECART_JUSTIFIE", "ERREUR"] and fiche["exemples_entrainement"] > 100 and len(fiche["variables"]) == 13
+    b = ia.enrich(brut)                                   # ré-entraînement : mêmes verdicts (graine fixe)
+    assert a.Statut.tolist() == b.Statut.tolist() and a.Confiance.tolist() == b.Confiance.tolist()
+
+
+def test_les_tests_n_ecrasent_pas_le_vrai_modele():
+    avant = (Path(__file__).parent.parent / "modele" / "modele_corroboria.json")
+    stamp = avant.stat().st_mtime if avant.exists() else None
+    ia.enrich(c.run())                                     # sans exporter_modele : aucun fichier écrit
+    assert (avant.stat().st_mtime if avant.exists() else None) == stamp
+
+
+def test_extractions_csv_acceptees_comme_excel(tmp_path):
+    src, dst, motif, det = c.load()
+    src.to_csv(tmp_path / "a.csv", index=False, sep=";", encoding="cp1252", errors="replace")   # Windows-1252, séparateur point-virgule
+    dst.to_csv(tmp_path / "b.csv", index=False, encoding="utf-8-sig")                            # UTF-8 avec BOM, séparateur virgule
+    motif.to_csv(tmp_path / "m.csv", index=False)
+    det.drop(columns="Date").to_csv(tmp_path / "d.csv", index=False)                     # déjà découpé en colonnes
+    ref = c.run()
+    csv = c.run({"source": tmp_path / "a.csv", "destination": tmp_path / "b.csv", "motif": tmp_path / "m.csv", "detail": tmp_path / "d.csv"})
+    assert csv.Statut.value_counts().to_dict() == ref.Statut.value_counts().to_dict()
+
+
+# ------------------------------------------------------------------ dates de fin (assignmentEndDate / termEndDate)
+def test_dates_de_fin_controlees_sur_l_echantillon():
+    r = c.run()
+    for champ in ("assignmentEndDate", "termEndDate"):
+        x = r[r.Champ == champ]
+        assert len(x) == 22 and (x.Statut == c.OK).all()          # B vide et aucune fin attendue : conforme (vide = vide)
+    assert "aucune date de fin attendue" in r[r.Champ == "termEndDate"].Explication.iloc[0]
+
+
+def test_date_de_fin_renseignee_en_b_sans_fin_attendue_est_une_anomalie(tmp_path):
+    p = make(tmp_path, [base_row()], [lambda d: d.__setitem__("assignmentEndDate", pd.Timestamp("2030-01-01"))])
+    assert get(c.run(p), "assignmentEndDate").Statut == c.ERREUR
+
+
+def test_fin_unite_administrative_regle_du_mapping():
+    det = pd.DataFrame({"IdentifiantPoste": [1, 1, 1, 2, 2], "CodeDirectionAffectée": [10, 20, 20, 30, 30],
+                        "Date": pd.to_datetime(["2000-01-01", "2005-06-10", "2008-01-01", "2001-01-01", "2006-01-01"])})
+    assert c.fin_unite_adm(det, 1, "2001-03-01") == pd.Timestamp("2005-06-09").date()   # le détail suivant change d'unité : date - 1 jour
+    assert c.fin_unite_adm(det, 1, "2006-01-01") is None                                  # le suivant a la même unité
+    assert c.fin_unite_adm(det, 1, "2009-01-01") is None                                  # aucun détail suivant
+    assert c.fin_unite_adm(det, 2, "2002-01-01") is None and c.fin_unite_adm(det, 99, "2002-01-01") is None

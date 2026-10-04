@@ -6,7 +6,9 @@ rédiger une explication à partir des facteurs réellement utilisés par le mod
 Les verdicts des règles déterministes ne sont jamais modifiés (sauf correction d'un expert).
 """
 import difflib
+import json
 import re
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -23,7 +25,7 @@ LOW, HIGH = 0.35, 0.65  # zone d'incertitude -> revue humaine
 SEVERITY = {"contractTypeCode": .9, "weeklyHoursOverride": .85, "dailyHoursOverride": .85, "detailedStatus": .9,
             "statusReasonCode": .8, "expectedReturnDate": .7, "Enregistrement": 1.0, "personId": 1.0,
             "divisionId": .8, "divisionCode": .7, "positionId": .8, "payGradeId": .75, "siteCode": .6,
-            "siteName": .6, "assignmentStartDate": .55, "termStartDate": .5, "isPrimaryAssignment": .8,
+            "siteName": .6, "assignmentStartDate": .55, "assignmentEndDate": .55, "termEndDate": .5, "termStartDate": .5, "isPrimaryAssignment": .8,
             "isTemporaryAssignment": .8, "onboardDate": .5, "givenName": .4, "surname": .4,
             "positionName": .3, "divisionName": .3, "contactEmail": .3}
 
@@ -157,7 +159,26 @@ def train(df, X_all, corr=None):
     data = pd.concat(parts, ignore_index=True)
     clf = RandomForestClassifier(n_estimators=200, max_depth=6, random_state=0, class_weight="balanced")
     clf.fit(data[FEATURES], data.y)
+    clf.n_exemples_ = len(data)
     return clf
+
+
+def sauver_modele(clf, n_exemples, n_corrections):
+    """Exporte le modèle entraîné (modele/modele_corroboria.joblib) et sa fiche (JSON) : le modèle est ré-entraînable à
+    l'identique avec `python corroboria.py` (graine fixe, mêmes données, mêmes règles)."""
+    try:
+        import joblib
+        sortie = BASE / "modele"
+        sortie.mkdir(exist_ok=True)
+        joblib.dump(clf, sortie / "modele_corroboria.joblib")
+        imp = sorted(zip(FEATURES, clf.feature_importances_), key=lambda x: -x[1])
+        (sortie / "modele_corroboria.json").write_text(json.dumps({
+            "type": "RandomForestClassifier(n_estimators=200, max_depth=6, class_weight='balanced', random_state=0)",
+            "classes": list(clf.classes_), "variables": FEATURES, "exemples_entrainement": int(n_exemples),
+            "corrections_experts_utilisees": int(n_corrections), "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "importance_des_variables": {k: round(float(v), 3) for k, v in imp}}, ensure_ascii=False, indent=1), encoding="utf-8")
+    except Exception:
+        pass  # l'export du modèle ne doit jamais bloquer l'analyse
 
 
 # ---------------------------------------------------------------- explication
@@ -173,7 +194,7 @@ def explain(clf, x, p_err):
 
 
 # ---------------------------------------------------------------- pipeline
-def enrich(df, retours_actifs=True):
+def enrich(df, retours_actifs=True, exporter_modele=False):
     """Verdicts enrichis. retours_actifs=False ignore les corrections d'expert et les règles apprises (pour mesurer leur effet)."""
     df = df.copy().reset_index(drop=True)
     df[["ValeurSourceA", "ValeurDestB"]] = df[["ValeurSourceA", "ValeurDestB"]].astype(str)
@@ -190,6 +211,8 @@ def enrich(df, retours_actifs=True):
                          index=gap.index)
     corr = load_corrections() if retours_actifs else pd.DataFrame(columns=["Matricule", "Champ", "Verdict"])
     clf = train(df, X_all, corr)
+    if exporter_modele:
+        sauver_modele(clf, clf.n_exemples_, len(corr))
 
     # IA sur les cas ambigus
     amb = df[(df.Nature == "heuristique") & (df.Statut != OK)].index

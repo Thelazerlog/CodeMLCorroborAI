@@ -1,0 +1,40 @@
+{
+ "type": "RandomForestClassifier(n_estimators=200, max_depth=6, class_weight='balanced', random_state=0)",
+ "classes": [
+  "ECART_JUSTIFIE",
+  "ERREUR"
+ ],
+ "variables": [
+  "sim",
+  "len_ratio",
+  "is_num",
+  "rel_diff",
+  "day_diff",
+  "one_empty",
+  "stable_map",
+  "contains",
+  "same_shape",
+  "same_rep",
+  "has_ref",
+  "ref_match",
+  "sev"
+ ],
+ "exemples_entrainement": 421,
+ "corrections_experts_utilisees": 0,
+ "date": "2026-10-04 03:55",
+ "importance_des_variables": {
+  "same_rep": 0.256,
+  "sim": 0.224,
+  "ref_match": 0.207,
+  "contains": 0.081,
+  "len_ratio": 0.055,
+  "sev": 0.044,
+  "day_diff": 0.043,
+  "is_num": 0.032,
+  "rel_diff": 0.02,
+  "same_shape": 0.019,
+  "has_ref": 0.017,
+  "stable_map": 0.003,
+  "one_empty": 0.0
+ }
+}

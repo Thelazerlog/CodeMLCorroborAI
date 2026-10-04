@@ -24,23 +24,81 @@ CONTRACT = {"T": "KELH", "O": "WHX", "M": "CEGQ", "R": "CNZC", "J": "RMQ", "Z": 
 
 
 # ---------------------------------------------------------------- chargement
+COLONNES_REQUISES = {
+    "source": ["Matricule", "NomFamille", "PrénomUsuel", "DateEmbaucheRécente", "TypeAffectation", "DateEntréePoste", "CodeEmploi",
+               "IntituléEmploi", "ÉchelleSalariale", "CodeImputation", "CodeDirection", "LibelléDirection", "CodeSite", "LibelléSite",
+               "CatégorieEmploi", "EstPermanent", "EstTempsPlein", "CodeStatutEmploi", "CodeSuspensionAccès", "HeuresNormeHebdo",
+               "HeuresNormeQuotidienne"],
+    "destination": ["personId", "givenName", "surname", "contactEmail", "onboardDate", "contractTypeCode", "detailedStatus", "siteCode",
+                    "siteName", "divisionId", "divisionCode", "divisionName", "positionId", "positionName", "positionCode", "payGradeId",
+                    "assignmentStartDate", "weeklyHoursOverride", "dailyHoursOverride"],
+    "motif": ["CodeCatégorieStatut", "CodeStatutSystèmeExterne", "CodeGestionAccès"],
+}
+NOMS_FICHIERS = {"source": "système A - RH (source)", "destination": "système B - Temps (cible)",
+                 "motif": "motifs de la situation d'emploi", "detail": "détail du poste"}
+
+
+COLONNES_DATES_B = ("onboardDate", "assignmentStartDate", "expectedReturnDate", "termStartDate")
+
+
+def _lire_table(fichier, dates=True):
+    """Excel (.xlsx) ou CSV (séparateur détecté, UTF-8 ou Windows-1252) -> DataFrame (dates converties pour un CSV)."""
+    if str(getattr(fichier, "name", fichier)).lower().endswith(".csv"):
+        for enc in ("utf-8-sig", "cp1252"):
+            try:
+                if hasattr(fichier, "seek"):
+                    fichier.seek(0)
+                d = pd.read_csv(fichier, sep=None, engine="python", encoding=enc)
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            raise ValueError("encodage non reconnu")
+        if dates:  # un CSV n'a pas de types : on retrouve les colonnes de dates comme dans un classeur Excel
+            for col in d.columns:
+                if str(col).startswith("Date") or col in COLONNES_DATES_B:
+                    d[col] = pd.to_datetime(d[col], errors="coerce")
+        return d
+    return pd.read_excel(fichier)
+
+
+def _lire(fichier, cle):
+    """Lit un fichier Excel ou CSV ; message clair (en français) si le fichier est illisible ou n'est pas la bonne extraction."""
+    try:
+        d = _lire_table(fichier, cle != "detail")
+    except Exception as e:
+        raise ValueError(f"Impossible de lire le fichier « {NOMS_FICHIERS[cle]} » : ce n'est pas un classeur Excel (.xlsx) ni un CSV valide ({e}).") from e
+    manque = [x for x in COLONNES_REQUISES.get(cle, []) if x not in d.columns and not (cle == "destination" and d[x].isna().all() if x in d.columns else False)]
+    if manque:
+        raise ValueError(f"Le fichier « {NOMS_FICHIERS[cle]} » n'a pas les colonnes attendues : {', '.join(manque[:8])}"
+                         f"{'…' if len(manque) > 8 else ''}. Vérifie que tu as chargé la bonne extraction à cet emplacement.")
+    return d
+
+
 def load(files=None):
     """files : dict optionnel {source, destination, motif, detail} -> chemin ou fichier téléversé."""
     f = {"source": DATA / "Employe_Source_Anonymise_VF.xlsx",
          "destination": DATA / "Employe_Destination_Anonymise_VF.xlsx",
          "motif": DATA / "Motif de la situation d'emploi.xlsx",
          "detail": DATA / "détail_du_poste.xlsx", **(files or {})}
-    src = pd.read_excel(f["source"])
-    dst = pd.read_excel(f["destination"]).dropna(axis=1, how="all")
-    for col in ("statusReasonCode", "expectedReturnDate"):  # colonnes vides si personne n'est absent
+    src = _lire(f["source"], "source")
+    dst = _lire(f["destination"], "destination").dropna(axis=1, how="all")
+    for col in ("statusReasonCode", "expectedReturnDate", "assignmentEndDate", "termEndDate"):  # colonnes vides si aucune date de fin / personne absent
         if col not in dst:
             dst[col] = pd.NA
-    dst["expectedReturnDate"] = pd.to_datetime(dst["expectedReturnDate"])
-    motif = pd.read_excel(f["motif"])
-    raw = pd.read_excel(f["detail"])
+    for col in ("expectedReturnDate", "assignmentEndDate", "termEndDate"):
+        dst[col] = pd.to_datetime(dst[col])
+    motif = _lire(f["motif"], "motif")
+    raw = _lire(f["detail"], "detail")
     col = raw.columns[0]
     names = col.split(",")
-    det = pd.DataFrame([str(v).split(",") for v in raw[col]], columns=names)
+    if "DateEffetAffectation" in raw.columns:      # CSV déjà découpé en colonnes
+        det = raw.copy()
+    elif "DateEffetAffectation" in names:          # Excel : une seule colonne contenant des valeurs séparées par des virgules
+        det = pd.DataFrame([str(v).split(",") for v in raw[col]], columns=names)
+    else:
+        raise ValueError(f"Le fichier « {NOMS_FICHIERS['detail']} » n'a pas la colonne attendue « DateEffetAffectation ». "
+                         "Vérifie que tu as chargé la bonne extraction à cet emplacement.")
     det = det.apply(pd.to_numeric, errors="coerce")
     det["Date"] = pd.to_datetime(det["DateEffetAffectation"], unit="D", origin="1899-12-30")
     return src, dst, motif, det
@@ -98,6 +156,34 @@ def unit_effective_date(det, poste, direction):
     if hit.empty:
         return h.Date.min()
     return hit.Date.iloc[-1] if len(changes) > 1 else h.Date.min()
+
+
+def fin_unite_adm(det, poste, debut):
+    """Fin de l'unité administrative courante (règle de date de fin du mapping).
+
+    Détail du poste « courant » = celui en vigueur au début de l'affectation (dernier détail dont la date d'effet est antérieure ou égale).
+    La fin = date d'effet du détail SUIVANT - 1 jour, seulement si ce détail a un code d'unité administrative différent ;
+    sinon (aucun détail suivant, ou même unité) : aucune date de fin (None)."""
+    h = det[det.IdentifiantPoste == poste].sort_values("Date").reset_index(drop=True)
+    if h.empty:
+        return None
+    col = "CodeDirectionAffectée"
+    avant = h[h.Date <= pd.Timestamp(debut)]
+    i = int(avant.index[-1]) if len(avant) else 0
+    if i + 1 >= len(h) or h[col][i + 1] == h[col][i]:
+        return None
+    return (h.Date[i + 1] - pd.Timedelta(days=1)).date()
+
+
+def date_fin_attendue(det, r):
+    """Date de fin attendue : la plus ancienne entre DateSortiePoste (système A) et la fin de l'unité administrative ; None si aucune."""
+    fin = fin_unite_adm(det, r.CodePoste, r.DateEntréePoste)
+    sortie = None if pd.isna(r.DateSortiePoste) else pd.Timestamp(r.DateSortiePoste).date()
+    dates = [x for x in (sortie, fin) if x is not None]
+    return min(dates) if dates else None
+
+
+REGLE_FIN = "la plus ancienne entre DateSortiePoste et la fin de l'unité adm. (date d'effet du détail suivant - 1 jour si l'unité change ; sinon aucune)"
 
 
 # ---------------------------------------------------------------- moteur
@@ -189,6 +275,13 @@ def run(files=None):
             "Date la plus ancienne entre DateEntréePoste et date d'effet de l'unité adm." + note)
         cmp(r, d, "termStartDate", exp_start.date(), pd.to_datetime(d.termStartDate).date(),
             "Date d'effet du détail du poste" + note)
+
+        # dates de fin d'affectation et de détail du poste (souvent vides : « vide » attendu = « vide » trouvé)
+        fin = date_fin_attendue(det, r)
+        for champ, regle in (("assignmentEndDate", "Date d'expiration du poste : " + REGLE_FIN),
+                             ("termEndDate", "Date de fin du détail du poste (même règle) : " + REGLE_FIN)):
+            cmp(r, d, champ, fin, pd.to_datetime(d[champ]).date() if pd.notna(d[champ]) else None, regle,
+                ok_expl="Valeurs conformes (aucune date de fin attendue)" if fin is None else "Valeurs conformes")
 
         # heures : source, sinon repli sur détail du poste
         hw, hd = r.HeuresNormeHebdo, r.HeuresNormeQuotidienne
@@ -300,4 +393,4 @@ def write_sheets(df, out):
 
 
 if __name__ == "__main__":
-    report(ia.enrich(run()))
+    report(ia.enrich(run(), exporter_modele=True))
